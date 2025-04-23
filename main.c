@@ -56,7 +56,11 @@ int main(int argc, char *argv[]){
 			printf("Received from client: %s\n", buffer);
 
 		//6. Send response.
-		char *hello = "Sema mbwa!\n";
+		char *hello = "HTTP/1.1 200 OK\r\n"
+			"Content-Type: text/plain\r\n"
+			"Content-Length: 10\r\n"
+			"\r\n"
+			"Sema Mbwa!";
 		write(client_socket, hello, strlen(hello));
 		printf("Message Sent!\n");
 		close(client_socket);

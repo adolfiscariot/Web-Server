@@ -7,12 +7,14 @@
 #include <arpa/inet.h>
 
 int main(int argc, char *argv[]){
+	//Create a socket
 	int client_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (client_fd < 0){
 		perror("Socket creation failed\n");
 		exit(EXIT_FAILURE);
 	}
 	
+	//Bind a socket
 	struct sockaddr_in addy;
 	memset(&addy, 0, sizeof(addy));
 	addy.sin_family = AF_INET;
@@ -22,18 +24,23 @@ int main(int argc, char *argv[]){
 		exit(EXIT_FAILURE);
 	}
 
+	//CHECK CONNECT VS BIND
 	int connected = connect(client_fd, (struct sockaddr *)&addy, sizeof(addy));
 	if (connected < 0){
 		printf("Connection failed\n");
 		exit(EXIT_FAILURE);
 	}
 
+	//Send message
 	char *hello = "Oyaaaaaaa\n";
 	send(client_fd, hello, strlen(hello), 0);
 	printf("Umetuma oya\n");
+
+	//Receive message
 	char buffer[1024];
 	read(client_fd, buffer, sizeof(buffer) - 2);
 	buffer[sizeof(buffer) - 1] = '\0';
 	printf("%s\n", buffer);
+
 	return 0;
 }
