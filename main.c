@@ -52,8 +52,10 @@ int main(int argc, char *argv[]){
 		if (valread < 0){
 			perror("Read failed\n");
 			continue;
-		} else
+		} else {
+			buffer[valread] = '\0';
 			printf("Received from client: %s\n", buffer);
+		}
 
 		//6. Send response.
 //		char *hello = "HTTP/1.1 200 OK\r\n"
@@ -68,8 +70,10 @@ int main(int argc, char *argv[]){
 		//6. Extract file name from request
 		char *file_name = strtok(buffer, " "); //Points to GET
 		file_name = strtok(NULL, " "); //Points to /info.html
-		if (file_name[0] == "/")
+		printf("%s\n", file_name);
+		if (file_name[0] == '/')
 			file_name++; //Points to info.html
+			printf("%s\n", file_name);
 
 		//7.Open the file
 		FILE *fp = fopen(file_name, "r");
@@ -80,9 +84,38 @@ int main(int argc, char *argv[]){
 				"\r\n"
 				"404 Not Found";
 			write(client_socket, not_found, strlen(not_found));
-		}else {
-			//CONTINUE FROM HERE
+		} else {
+			//find out info.html's size
+			fseek(fp, 0, SEEK_END);
+			long file_size = ftell(fp);
+			rewind(fp);
+			
+			//copy info.html into a buffer
+			char *file_content = malloc(file_size + 1);
+			if (fread(file_content, 1, file_size, fp) != file_size)
+				perror("File read incomplete");
+			fclose(fp);
+			file_content[file_size] = '\0';
+
+			//8. Build a Response header
+			char header[1024];
+			sprintf(header,
+					"HTTP/1.1 200 OK\r\n"
+					"Content-Type: text/html\r\n"
+					"Content-Length: %ld\r\n"
+					"Connection: close\r\n"
+					"\r\n",
+					file_size);
+
+			//9. Send header then file content
+			write(client_socket, header, strlen(header));
+			write(client_socket, file_content, file_size);
+
+			//10. Free the memory
+			free(file_content);	
 		}
+		close(client_socket);
+
 	}
 	return 0;
 }
