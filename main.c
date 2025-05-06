@@ -57,16 +57,6 @@ int main(int argc, char *argv[]){
 			printf("Received from client: %s\n", buffer);
 		}
 
-		//6. Send response.
-//		char *hello = "HTTP/1.1 200 OK\r\n"
-//			"Content-Type: text/plain\r\n"
-//			"Content-Length: 10\r\n"
-//			"\r\n"
-//			"Sema Mbwa!";
-//		write(client_socket, hello, strlen(hello));
-//		printf("Message Sent To Client!\n");
-//		close(client_socket);
-
 		//6. Extract file name from request
 		char *file_name = strtok(buffer, " "); //Points to GET
 		file_name = strtok(NULL, " "); //Points to /info.html
@@ -95,7 +85,6 @@ int main(int argc, char *argv[]){
 			if (fread(file_content, 1, file_size, fp) != file_size)
 				perror("File read incomplete");
 			fclose(fp);
-			file_content[file_size] = '\0';
 
 			//8. Build a Response header
 			char header[1024];
