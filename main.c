@@ -7,6 +7,30 @@
 #include <netinet/in.h> 
 #include <unistd.h> 
 
+typedef struct{
+	char method[8]; //GET, POST, etc
+	char *path; // /info.html
+	char *query_string; // ?pageNo=5
+	char *protocol; // HTTP/1.1
+	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
+	int header_count; // # of headers
+	char *body; // User in POST, PUT methods e.g form submissions
+}HttpRequest;
+
+//Parse Header
+void parse_client_request(const char *raw_request_buffer, HttpRequest *client_request){
+	HttpRequest request = {0}; //initialize all struct values to NULL;
+
+	//duplicate request to avoid modifying the original
+	char *duplicate_request_buffer = strdup(raw_request_buffer);
+	if(duplicate_request_buffer == NULL){
+		perror("Memory allocation failed\n");
+		exit(1);
+	}
+
+	//fetch the HTTP Method
+	char *request_line = strtok(client_request, " \r\n");
+}
 
 int main(int argc, char *argv[]){
 	// 1. Create a socket
