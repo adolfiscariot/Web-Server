@@ -15,7 +15,7 @@ typedef struct{
 	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
 	int header_count; // # of headers
 	char *body; // User in POST, PUT methods e.g form submissions
-}HttpRequest;
+} HttpRequest;
 
 //Parse Header
 void parse_client_request(const char *raw_request_buffer, HttpRequest *client_request){
@@ -25,11 +25,28 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 	char *duplicate_request_buffer = strdup(raw_request_buffer);
 	if(duplicate_request_buffer == NULL){
 		perror("Memory allocation failed\n");
-		exit(1);
+		exit(EXIT_FAILURE);
 	}
 
 	//fetch the HTTP Method
-	char *request_line = strtok(client_request, " \r\n");
+	char *request_line = strtok(duplicate_request_buffer, " \r\n");
+	if(request_line != NULL)
+	{
+		/*
+		 Copy at most sizeof(client_request=>method) - 1 characters from the request
+		 line into the client_request->method, then manually set the null terminator
+		 */
+		strncpy(client_request->method, request_line, sizeof(client_request->method) - 1);
+		client_request->method[sizeof(client_request->method) - 1] = '\0';
+	} else {
+		fprintf(stderr, "Request line not found\n");
+		free(duplicate_request_buffer); //strtok uses malloc so freeing this is a must.
+		exit(EXIT_FAILURE);
+	}
+
+	//fetch the path
+	char *path = strtok(NULL ," ");
+
 }
 
 int main(int argc, char *argv[]){
