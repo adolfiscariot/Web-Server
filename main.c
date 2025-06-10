@@ -23,30 +23,62 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 
 	//duplicate request to avoid modifying the original
 	char *duplicate_request_buffer = strdup(raw_request_buffer);
-	if(duplicate_request_buffer == NULL){
+	if(duplicate_request_buffer == NULL)
+	{
 		perror("Memory allocation failed\n");
 		exit(EXIT_FAILURE);
 	}
 
 	//fetch the HTTP Method
-	char *request_line = strtok(duplicate_request_buffer, " \r\n");
-	if(request_line != NULL)
+	char *request_line_token = strtok(duplicate_request_buffer, " \r\n");
+	if(request_line_token != NULL)
 	{
 		/*
-		 Copy at most sizeof(client_request=>method) - 1 characters from the request
-		 line into the client_request->method, then manually set the null terminator
+		 * Copy (at most) sizeof(client_request=>method) - 1 characters 
+		 * from the request line into the client_request->method, 
+		 * then manually set the null terminator
 		 */
-		strncpy(client_request->method, request_line, sizeof(client_request->method) - 1);
+		strncpy(client_request->method, request_line_token, sizeof(client_request->method) - 1);
 		client_request->method[sizeof(client_request->method) - 1] = '\0';
-	} else {
+	}
+	else 
+	{
 		fprintf(stderr, "Request line not found\n");
-		free(duplicate_request_buffer); //strtok uses malloc so freeing this is a must.
+		free(duplicate_request_buffer); //strdup uses malloc so freeing this is a must.
 		exit(EXIT_FAILURE);
 	}
 
 	//fetch the path
-	char *path = strtok(NULL ," ");
+	char *path_token = strtok(NULL ," ");
+	if (path_token != NULL)
+	{
+		/*
+		 * Check if path contains query. If it does, store query to 
+		 * client_request->query_string otherwise set it to null
+		 */
+		char *question_mark = strchr(path_token, '?');
+		if (question_mark != NULL)
+		{
+			//replace question mark with null terminator
+			*question_mark = '\0';
+			//set path and query
+			client_request->path = strdup(path_token);
+			client_request->query_string = strdup(question_mark + 1);
+		}
+		else
+		{
+			client_request->path = strdup(path_token);
+			client_request->query_string = NULL;	
+		}
+	}
+	else
+	{
+		fprintf(stderr, "Path not found\n");
+		free(duplicate_request_buffer);
+		exit(EXIT_FAILURE);
+	}
 
+	//NEXT: FIND THE PROTOCOL
 }
 
 int main(int argc, char *argv[]){
