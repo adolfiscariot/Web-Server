@@ -21,24 +21,24 @@ typedef struct{
 void parse_client_request(const char *raw_request_buffer, HttpRequest *client_request){
 	HttpRequest request = {0}; //initialize all struct values to NULL;
 
-	//duplicate request to avoid modifying the original
+	//1. Duplicate request to avoid modifying the original
 	char *duplicate_request_buffer = strdup(raw_request_buffer);
 	if(duplicate_request_buffer == NULL)
 	{
-		perror("Memory allocation failed\n");
+		fprintf(stderr, "Memory allocation failed\n");
 		exit(EXIT_FAILURE);
 	}
 
-	//fetch the HTTP Method
-	char *request_line_token = strtok(duplicate_request_buffer, " \r\n");
-	if(request_line_token != NULL)
+	//2. Fetch the HTTP Method
+	char *request_method_token = strtok(duplicate_request_buffer, " \r\n");
+	if(request_method_token != NULL)
 	{
 		/*
 		 * Copy (at most) sizeof(client_request=>method) - 1 characters 
 		 * from the request line into the client_request->method, 
 		 * then manually set the null terminator
 		 */
-		strncpy(client_request->method, request_line_token, sizeof(client_request->method) - 1);
+		strncpy(client_request->method, request_method_token, sizeof(client_request->method) - 1);
 		client_request->method[sizeof(client_request->method) - 1] = '\0';
 	}
 	else 
@@ -48,7 +48,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 		exit(EXIT_FAILURE);
 	}
 
-	//fetch the path
+	//3. Fetch the path and query string
 	char *path_token = strtok(NULL ," ");
 	if (path_token != NULL)
 	{
@@ -78,7 +78,24 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 		exit(EXIT_FAILURE);
 	}
 
-	//NEXT: FIND THE PROTOCOL
+	//4. Fetch the protocol
+	char *protocol_token = strtok(NULL, " \r\n");
+	if (protocol_token != NULL)
+	{
+		client_request->protocol = strdup(protocol_token);
+		if (client_request->protocol == NULL)
+		{
+			fprintf(stderr, "Memory allocation failed\n");
+			free(duplicate_request_buffer);
+			exit(EXIT_FAILURE);
+		}
+	}
+	else
+	{
+		fprintf(stderr, "Protocol Not Found\n");
+		free(duplicate_request_buffer);
+		exit(EXIT_FAILURE);
+	}
 }
 
 int main(int argc, char *argv[]){
@@ -123,58 +140,66 @@ int main(int argc, char *argv[]){
 		char buffer[1024] = {0};
 		int valread = read(client_socket, buffer, sizeof(buffer) - 1);
 		if (valread < 0){
-			perror("Read failed\n");
+			fprintf(stderr, "Read failed\n");
 			continue;
 		} else {
 			buffer[valread] = '\0';
 			printf("Received from client: %s\n", buffer);
 		}
 
-		//6. Extract file name from request
-		char *file_name = strtok(buffer, " "); //Points to GET
-		file_name = strtok(NULL, " "); //Points to /info.html
-		printf("%s\n", file_name);
-		if (file_name[0] == '/')
-			file_name++; //Points to info.html
-			printf("%s\n", file_name);
+		//6. Parse request header
+		HttpRequest client_request = {0};
+		parse_client_request(buffer, &client_request);
 
-		//7.Open the file
-		FILE *fp = fopen(file_name, "r");
-		if (fp == NULL){
-			char *not_found = "HTTP/1.1 404 Not Found\r\n"
-				"Content-Type: text/plain\r\n"
-				"Content-Length: 13\r\n"
-				"\r\n"
-				"404 Not Found";
-			write(client_socket, not_found, strlen(not_found));
-		} else {
-			//find out info.html's size
-			fseek(fp, 0, SEEK_END);
-			long file_size = ftell(fp);
-			rewind(fp);
-			
-			//copy info.html into a buffer
-			char *file_content = malloc(file_size + 1);
-			if (fread(file_content, 1, file_size, fp) != file_size)
-				perror("File read incomplete");
-			fclose(fp);
+		printf("Method: %s\n", client_request.method);
+		printf("Protocol: %s\n", client_request.protocol);
 
-			//8. Build a Response header
-			char header[1024];
-			sprintf(header,
-					"HTTP/1.1 200 OK\r\n"
-					"Content-Type: text/html\r\n"
-					"Content-Length: %ld\r\n"
-					"Connection: close\r\n"
-					"\r\n",
-					file_size);
+		char *file_name = client_request.path;
+		if (file_name)
+		{
+			if (file_name[0] == '/')
+				file_name++; //Points to info.html
+				printf("Filename: %s\n", file_name);
 
-			//9. Send header then file content
-			write(client_socket, header, strlen(header));
-			write(client_socket, file_content, file_size);
+			//7.Open the file
+			FILE *fp = fopen(file_name, "r");
+			if (fp == NULL){
+				char *not_found = "HTTP/1.1 404 Not Found\r\n"
+					"Content-Type: text/plain\r\n"
+					"Content-Length: 13\r\n"
+					"\r\n"
+					"404 Not Found";
+				write(client_socket, not_found, strlen(not_found));
+			} else {
+				//find out info.html's size
+				fseek(fp, 0, SEEK_END);
+				long file_size = ftell(fp);
+				rewind(fp);
+				
+				//copy info.html into a buffer
+				char *file_content = malloc(file_size + 1);
+				if (fread(file_content, 1, file_size, fp) != file_size)
+					perror("File read incomplete");
+				fclose(fp);
 
-			//10. Free the memory
-			free(file_content);	
+				//8. Build a Response header
+				char header[1024];
+				sprintf(header,
+						"HTTP/1.1 200 OK\r\n"
+						"Content-Type: text/html\r\n"
+						"Content-Length: %ld\r\n"
+						"Connection: close\r\n"
+						"\r\n",
+						file_size);
+
+				//9. Send header then file content
+				write(client_socket, header, strlen(header));
+				write(client_socket, file_content, file_size);
+
+
+				//10. Free the memory
+				free(file_content);	
+			}
 		}
 		close(client_socket);
 
