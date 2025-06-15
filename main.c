@@ -18,7 +18,7 @@ typedef struct{
 } HttpRequest;
 
 //Parse Header
-void parse_client_request(const char *raw_request_buffer, HttpRequest *client_request){
+void parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
 	HttpRequest request = {0}; //initialize all struct values to NULL;
 
 	//1. Duplicate request to avoid modifying the original
@@ -96,6 +96,66 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 		free(duplicate_request_buffer);
 		exit(EXIT_FAILURE);
 	}
+
+	//5. Fetch the headers
+	/*
+	 * First we find the end of the request line using strstr then
+	 * we use that to find the beginning of the headers. We then
+	 * find the end of the headers using strstr again and replace
+	 * the delimiters with a null terminating character. Afterwards
+	 * we tokenize the headers using strtok, adding a pointer to 
+	 * each header e.g "User Agent" to the headers field. Finally we
+	 * increament header_count by 1.
+	 */
+
+	if (request_line_end == NULL)
+	{
+		fprintf(stderr, "Malformed request line\n");
+		free(duplicate_request_buffer);
+		exit(EXIT_FAILURE);
+	}
+
+	char *headers_end = strstr(request_line_end + 2, "\r\n\r\n");
+	if (headers_end == NULL)
+	{
+		fprintf(stderr, "Malformed headers - mission \\r\\n\\r\\n terminators.\n");
+		free(duplicate_request_buffer);
+		exit(EXIT_FAILURE);
+	}
+
+	*headers_end = '\0';
+	char *raw_headers_block = request_line_end + 2;
+	char *header_token;
+	char *save_ptr;
+
+	header_token = strtok_r(raw_headers_block, "\r\n", &save_ptr);
+	while (header_token != NULL)
+	{
+		if(client_request->header_count >= 20)
+		{
+			fprintf(stderr, "Max number of headers (20) reached\n");
+			break;
+		}
+		if(strlen(header_token) > 0)
+		{
+			client_request->headers[client_request->header_count] = strdup(header_token);
+			if(
+			client_request->headers[client_request->header_count] == NULL)
+			{
+				perror("Memory allocation failed\n");
+				free(duplicate_request_buffer);
+				exit(EXIT_FAILURE);
+			}
+			client_request->header_count++;
+		}
+		else
+		{
+			printf("Empty header token encountered. Skipping\n");
+		}
+		
+		header_token = strtok_r(NULL, "\r\n", &save_ptr);
+	}
+	printf("Header parsing done. %d headers found\n", client_request->header_count);
 }
 
 int main(int argc, char *argv[]){
@@ -149,7 +209,8 @@ int main(int argc, char *argv[]){
 
 		//6. Parse request header
 		HttpRequest client_request = {0};
-		parse_client_request(buffer, &client_request);
+		char *request_line_end = strstr(buffer, "\r\n");
+		parse_client_request(buffer, &client_request, request_line_end);
 
 		printf("Method: %s\n", client_request.method);
 		printf("Protocol: %s\n", client_request.protocol);
