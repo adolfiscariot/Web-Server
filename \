@@ -162,36 +162,29 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 char *get_header_name(HttpRequest *request, char *name)
 {
 	//loop through headers:
-	for (int i = 0; i < request->header_count; i++)
+	for (int i = 0; i < request->header_count, i++)
 	{
-		if (request->headers[i] == NULL)
-		{
-			printf("Header not found. Skipping\n");
-			continue;
-		}
-
 		//A header must have a colon & if not, skip it
-		char *colon = strchr(request->headers[i], ':');
+		char *colon = strchr(request->headers[i], ":");
 		if (colon == NULL)
 		{
 			fprintf(stderr, "Colon not found in header\n");
 			continue;
 		}
 
-		//The name length is from the beginning to the colon
-		size_t name_length = colon - request->headers[i];
+		size_t name_length = colon - request->header[i];
 
-		//Return value if header in HttpRequest struct matches inputed header
-		if (strncasecmp(request->headers[i], name, name_length) == 0 && name_length == strlen(name))
+		if (strncasecmp(request->headers[i], name, name_length) == 0)
 		{
+			printf("The header matches the name\n");
 			char *whitespaces = colon + 1;
-			while(*whitespaces == ' ' || *whitespaces == '\t')
+			while(*whitespaces == ' ' || whitespaces == '\t')
 				whitespaces++;
+			
 			return whitespaces;
 		}
 	}
 	printf("There are no more headers to loop through\n");
-	return NULL;
 }
 
 int main(int argc, char *argv[]){
@@ -247,31 +240,15 @@ int main(int argc, char *argv[]){
 		HttpRequest client_request = {0};
 		char *request_line_end = strstr(buffer, "\r\n");
 		parse_client_request(buffer, &client_request, request_line_end);
-
-		//Check if the get header name method works
-		char *host = get_header_name(&client_request, "Host");
+		char *host = get_header_name(client_request, "Host");
 		if (host)
 		{
-			printf("The host is: %s\n", host);
+			printf("Host: %s\n", host);
 		}
 
-		char *user_agent = get_header_name(&client_request, "User-Agent");
-		if (user_agent)
-		{
-			printf("The user-agent is: %s\n", user_agent);
-		}
-
-		char *connection = get_header_name(&client_request, "Connection");
-		if (connection)
-		{
-			printf("The connection is: %s\n", connection);
-		}
-		
-		//Return method and protocol
 		printf("Method: %s\n", client_request.method);
 		printf("Protocol: %s\n", client_request.protocol);
 
-		//Return file if it exists
 		char *file_name = client_request.path;
 		if (file_name)
 		{
@@ -322,6 +299,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 		close(client_socket);
+
 	}
 	return 0;
 }
