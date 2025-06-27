@@ -118,7 +118,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 	char *headers_end = strstr(request_line_end + 2, "\r\n\r\n");
 	if (headers_end == NULL)
 	{
-		fprintf(stderr, "Malformed headers - mission \\r\\n\\r\\n terminators.\n");
+		fprintf(stderr, "Malformed headers - missing \\r\\n\\r\\n terminators.\n");
 		free(duplicate_request_buffer);
 		exit(EXIT_FAILURE);
 	}
@@ -194,6 +194,19 @@ char *get_header_name(HttpRequest *request, char *name)
 	return NULL;
 }
 
+//Function to handle the request method
+int handle_method(HttpRequest *client_request){
+	printf("Handling the method....\n");
+	if (strcmp(method, "GET") == 0)
+	{
+		//INSERT LOGIC HERE 
+	}
+	else if (strcmp(method, "POST") == 0)
+	{
+		//INSERT LOGIC HERE 
+	}
+}
+
 int main(int argc, char *argv[]){
 	// 1. Create a socket
 	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -238,7 +251,14 @@ int main(int argc, char *argv[]){
 		if (valread < 0){
 			fprintf(stderr, "Read failed\n");
 			continue;
-		} else {
+		}
+		else if (valread == 0)
+		{
+			printf("Empty request by client\n");
+			close(client_socket);
+			return 0;
+		}
+		else {
 			buffer[valread] = '\0';
 			printf("Received from client: %s\n", buffer);
 		}
@@ -250,9 +270,15 @@ int main(int argc, char *argv[]){
 
 		//Check if the get header name method works
 		char *host = get_header_name(&client_request, "Host");
-		if (host)
+		char *localhostUrl = "127.0.0.1:4040";
+		if (strcmp(host, localhostUrl) == 0) 
 		{
 			printf("The host is: %s\n", host);
+			printf("LocalhostUrl is: %s\n", localhostUrl);
+		}
+		else
+		{
+			printf("Host: %s is not equal to localhost: %s\n", host, localhostUrl);
 		}
 
 		char *user_agent = get_header_name(&client_request, "User-Agent");
