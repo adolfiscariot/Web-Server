@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h> 
 #include <unistd.h> 
+#include <dirent.h>
 
 typedef struct{
 	char method[8]; //GET, POST, etc
@@ -194,17 +195,54 @@ char *get_header_name(HttpRequest *request, char *name)
 	return NULL;
 }
 
-//Function to handle the request method
+//Function to handle the request method. Returns 0 for html requests
+//else returns 1. (0 = success, 1 = failure)
 int handle_method(HttpRequest *client_request){
 	printf("Handling the method....\n");
-	if (strcmp(method, "GET") == 0)
+	if (strcmp(client_request->method, "GET") == 0)
 	{
-		//INSERT LOGIC HERE 
+		//go to directory where files are
+		const char *directory_name = "files";
+		DIR *file_directory = opendir(directory_name);
+		if (file_directory == NULL){
+			perror("Couldn't open the files directory\n"); 
+			return 1;
+		}
+		printf("Directory '%s' has been opened.\n", directory_name);
+
+		//loop thru directory looking for file endings
+		struct dirent *file_in_directory;
+		while((file_in_directory = readdir(file_directory)) != NULL){
+			char *file_name = file_in_directory->d_name;
+
+			//Skip files with "." or ".." as the name
+			if(strcmp(file_name, ".") == 0 || strcmp(file_name, "..") == 0){
+				printf("File is hidden or has '..' as it's name\n");
+				continue;
+			}
+
+			printf("Found! Processing file: %s...\n", file_name);
+
+			//Find last occurence of fullstop
+			char *fullstop = strrchr(file_name, '.');
+
+			if(fullstop != NULL && fullstop != file_name){
+				char *file_ending = fullstop + 1;
+				
+				//check if file is html (add other extenstions later)
+				if(strcmp(file_ending, "html")==0){
+					printf("Its a html file\n");
+					return 0;
+				}
+			}
+			else{
+				printf("File %s is hidden or has no extension\n", file_name);
+				return 1;
+			}
+
+		}
 	}
-	else if (strcmp(method, "POST") == 0)
-	{
-		//INSERT LOGIC HERE 
-	}
+	//INSERT LOGIC 4 OTHER METHODS (POST, DELETE ETC)
 }
 
 int main(int argc, char *argv[]){
@@ -297,15 +335,16 @@ int main(int argc, char *argv[]){
 		printf("Method: %s\n", client_request.method);
 		printf("Protocol: %s\n", client_request.protocol);
 
+		//Handle the method
+		handle_method(&client_request);
+
 		//Return file if it exists
-		char *file_name = client_request.path;
+		char *request_path = client_request.path;
+		char *file_name = strrchr(request_path, '/');
 		if (file_name)
 		{
-			if (file_name[0] == '/')
-			{
-				file_name++; 
-				printf("Filename: %s\n", file_name);
-			}
+			file_name++; 
+			printf("Filename: %s\n", file_name);
 
 			//7.Open the file
 			FILE *fp = fopen(file_name, "r");
