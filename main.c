@@ -19,7 +19,7 @@ typedef struct{
 } HttpRequest;
 
 //Parse Header
-void parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
+int parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
 	HttpRequest request = {0}; //initialize all struct values to NULL;
 
 	//1. Duplicate request to avoid modifying the original
@@ -27,7 +27,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 	if(duplicate_request_buffer == NULL)
 	{
 		fprintf(stderr, "Memory allocation failed\n");
-		exit(EXIT_FAILURE);
+		return 1;
 	}
 
 	//2. Fetch the HTTP Method
@@ -46,7 +46,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 	{
 		fprintf(stderr, "Request line not found\n");
 		free(duplicate_request_buffer); //strdup uses malloc so freeing this is a must.
-		exit(EXIT_FAILURE);
+		return 1;
 	}
 
 	//3. Fetch the path and query string
@@ -76,7 +76,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 	{
 		fprintf(stderr, "Path not found\n");
 		free(duplicate_request_buffer);
-		exit(EXIT_FAILURE);
+		return 1;
 	}
 
 	//4. Fetch the protocol
@@ -88,14 +88,14 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 		{
 			fprintf(stderr, "Memory allocation failed\n");
 			free(duplicate_request_buffer);
-			exit(EXIT_FAILURE);
+			return 1;
 		}
 	}
 	else
 	{
 		fprintf(stderr, "Protocol Not Found\n");
 		free(duplicate_request_buffer);
-		exit(EXIT_FAILURE);
+		return 1;
 	}
 
 	//5. Fetch the headers
@@ -113,7 +113,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 	{
 		fprintf(stderr, "Malformed request line\n");
 		free(duplicate_request_buffer);
-		exit(EXIT_FAILURE);
+		return 1;
 	}
 
 	char *headers_end = strstr(request_line_end + 2, "\r\n\r\n");
@@ -121,7 +121,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 	{
 		fprintf(stderr, "Malformed headers - missing \\r\\n\\r\\n terminators.\n");
 		free(duplicate_request_buffer);
-		exit(EXIT_FAILURE);
+		return 1;
 	}
 
 	*headers_end = '\0';
@@ -145,7 +145,7 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 			{
 				perror("Memory allocation failed\n");
 				free(duplicate_request_buffer);
-				exit(EXIT_FAILURE);
+				return 1;
 			}
 			client_request->header_count++;
 		}
@@ -157,6 +157,8 @@ void parse_client_request(const char *raw_request_buffer, HttpRequest *client_re
 		header_token = strtok_r(NULL, "\r\n", &save_ptr);
 	}
 	printf("Header parsing done. %d headers found\n", client_request->header_count);
+	free (duplicate_request_buffer);
+	return 0;
 }
 
 //Function to get header fields
@@ -195,54 +197,120 @@ char *get_header_name(HttpRequest *request, char *name)
 	return NULL;
 }
 
-//Function to handle the request method. Returns 0 for html requests
-//else returns 1. (0 = success, 1 = failure)
-int handle_method(HttpRequest *client_request){
+//Function to handle the request method. Returns 0 for success, 1 for failure
+int handle_method(int client_socket, HttpRequest *client_request){
 	printf("Handling the method....\n");
+
 	if (strcmp(client_request->method, "GET") == 0)
 	{
-		//go to directory where files are
+		//path for where files are
 		const char *directory_name = "files";
-		DIR *file_directory = opendir(directory_name);
-		if (file_directory == NULL){
-			perror("Couldn't open the files directory\n"); 
+		char *request_path = client_request->path;
+		
+		//Actual file path on disk
+		char *final_request_path;
+	
+		//1. Handle root requests
+		if (strcmp(request_path, "/") == 0){
+			final_request_path = "/index.html"
+		} else {
+			final_request_path = request_path;
+		}
+
+		//2. Dynamically allocate memory for full path
+		size_t full_path_len = strlen(directory_name) + strlen(request_path) + 1;
+		char *full_path = malloc(full_path_len);
+		if (full_path == NULL){
+			perror("Memory allocation failed\n");
+			free (duplicate_request_buffer);
 			return 1;
 		}
-		printf("Directory '%s' has been opened.\n", directory_name);
 
-		//loop thru directory looking for file endings
-		struct dirent *file_in_directory;
-		while((file_in_directory = readdir(file_directory)) != NULL){
-			char *file_name = file_in_directory->d_name;
+		//3. Construct full path
+		snprintf(full_path, full_path_len, "%s%s", directory_name, final_request_path);
 
-			//Skip files with "." or ".." as the name
-			if(strcmp(file_name, ".") == 0 || strcmp(file_name, "..") == 0){
-				printf("File is hidden or has '..' as it's name\n");
-				continue;
-			}
+		//4. Open file. Use rb because not every file will be text.
+		FILE *fp = fopen(full_path, "rb");
+		if (fp == NULL){
+			perror("Failed to open file\n");
+			char *not_found = "HTTP/1.1 404 Not Found\r\n"
+				"Content-Type: text/plain\r\n"
+				"Content-Length: 13\r\n"
+				"\r\n"
+				"404 Not Found";
+			write(client_socket, not_found, strlen(not_found));
+			free(full_path);
+			return 1;
+		} else {
+			//find out file size
+			fseek(fp, 0, SEEK_END);
+			long file_size = ftell(fp);
+			rewind(fp);
+			
+			//copy file into a buffer
+			char *file_content = malloc(file_size + 1);
 
-			printf("Found! Processing file: %s...\n", file_name);
-
-			//Find last occurence of fullstop
-			char *fullstop = strrchr(file_name, '.');
-
-			if(fullstop != NULL && fullstop != file_name){
-				char *file_ending = fullstop + 1;
-				
-				//check if file is html (add other extenstions later)
-				if(strcmp(file_ending, "html")==0){
-					printf("Its a html file\n");
-					return 0;
-				}
-			}
-			else{
-				printf("File %s is hidden or has no extension\n", file_name);
+			if (file_content == NULL){
+				perror("Memory allocation failed\n");
+				fclose(fp);
+				free(full_path);
+				char *server_error = "HTTP/1.1 500 Internal Server Error\r\n"
+					"Content-Type: text/plain\r\n"
+					"Content-Length: 22\r\n"
+					"\r\n"
+					"Internal Server Error";
+				wirte(client_socket, server_error, strlen(server_error);
 				return 1;
 			}
 
+			if (fread(file_content, 1, file_size, fp) != file_size){
+				perror("File read incomplete");
+				free(file_content);
+				fclose(fp);
+				free(full_path);
+				char *server_error = "HTTP/1.1 500 Internal Server Error\r\n"
+					"Content-Type: text/plain\r\n"
+					"Content-Length: 22\r\n"
+					"\r\n"
+					"Internal Server Error";
+				wirte(client_socket, server_error, strlen(server_error);
+				return 1;
+			}
+
+			//8. Determine content type in response header
+			const char *content_type = "application/octet-stream" //Default
+			char *file_extension = strrchr(actual_file_path, '.');
+			if (file_extension != NULL && file_extension != actual_file_path){
+				file_extension++;
+				if (strcmp(file_extension, "html") == 0) content_type = "text/html";
+				else if (strcmp(file_extension, "css") == 0) content_type = "text/css";
+				else if (strcmp(file_extension, "js") == 0) content_type = "application/js";
+				else if (strcmp(file_extension, "json") == 0) content_type = "application/json";
+				else if (strcmp(file_extension, "pdf") == 0) content_type = "application/pdf";
+				else if (strcmp(file_extension, "png") == 0) content_type = "image/png";
+				else if (strcmp(file_extension, "jpg") == 0i || strcmp(file_extension, "jpeg") == 0) content_type = "image/jpeg";
+			}
+
+			//9. Build a Response header
+			char header[1024];
+			sprintf(header,
+					"HTTP/1.1 200 OK\r\n"
+					"Content-Type: text/html\r\n"
+					"Content-Length: %ld\r\n"
+					"Connection: close\r\n"
+					"\r\n",
+					file_size);
+
+			//10. Send header then file content
+			write(client_socket, header, strlen(header));
+			write(client_socket, file_content, file_size);
+
+
+			//11. Free the memory
+			free(file_content);	
+			free(full_path);
 		}
-	}
-	//INSERT LOGIC 4 OTHER METHODS (POST, DELETE ETC)
+		return 0;
 }
 
 int main(int argc, char *argv[]){
@@ -336,55 +404,28 @@ int main(int argc, char *argv[]){
 		printf("Protocol: %s\n", client_request.protocol);
 
 		//Handle the method
-		handle_method(&client_request);
+		int handle_method(&client_request);
 
 		//Return file if it exists
+		char *file_root_directory = "files";
 		char *request_path = client_request.path;
-		char *file_name = strrchr(request_path, '/');
+
+		char *path_buffer = malloc(strlen(file_root_directory)+strlen(request_path));
+		snprintf(path_buffer, sizeof(path_buffer), "%s%s", file_root_directory, request_path);
+
+		if(strcmp(path_buffer, "/")==0){
+			snprintf(path_buffer, sizeof(path_buffer), "%s/index.html", file_root_directory);
+
+		}
+		
+		char *file_name = strrchr(path_buffer, '/');
 		if (file_name)
 		{
 			file_name++; 
 			printf("Filename: %s\n", file_name);
 
 			//7.Open the file
-			FILE *fp = fopen(file_name, "r");
-			if (fp == NULL){
-				char *not_found = "HTTP/1.1 404 Not Found\r\n"
-					"Content-Type: text/plain\r\n"
-					"Content-Length: 13\r\n"
-					"\r\n"
-					"404 Not Found";
-				write(client_socket, not_found, strlen(not_found));
-			} else {
-				//find out info.html's size
-				fseek(fp, 0, SEEK_END);
-				long file_size = ftell(fp);
-				rewind(fp);
-				
-				//copy info.html into a buffer
-				char *file_content = malloc(file_size + 1);
-				if (fread(file_content, 1, file_size, fp) != file_size)
-					perror("File read incomplete");
-				fclose(fp);
 
-				//8. Build a Response header
-				char header[1024];
-				sprintf(header,
-						"HTTP/1.1 200 OK\r\n"
-						"Content-Type: text/html\r\n"
-						"Content-Length: %ld\r\n"
-						"Connection: close\r\n"
-						"\r\n",
-						file_size);
-
-				//9. Send header then file content
-				write(client_socket, header, strlen(header));
-				write(client_socket, file_content, file_size);
-
-
-				//10. Free the memory
-				free(file_content);	
-			}
 		}
 		close(client_socket);
 	}
