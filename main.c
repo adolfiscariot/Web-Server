@@ -9,13 +9,13 @@
 #include <dirent.h>
 
 typedef struct{
-	char method[8]; //GET, POST, etc
+	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
 	char *path; // /info.html
 	char *query_string; // ?pageNo=5
 	char *protocol; // HTTP/1.1
-	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
-	int header_count; // # of headers
 	char *body; // User in POST, PUT methods e.g form submissions
+	char method[8]; //GET, POST, etc
+	int header_count; // # of headers
 } HttpRequest;
 
 //Parse Header
@@ -212,7 +212,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 	
 		//1. Handle root requests
 		if (strcmp(request_path, "/") == 0){
-			final_request_path = "/index.html"
+			final_request_path = "/index.html";
 		} else {
 			final_request_path = request_path;
 		}
@@ -222,7 +222,6 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		char *full_path = malloc(full_path_len);
 		if (full_path == NULL){
 			perror("Memory allocation failed\n");
-			free (duplicate_request_buffer);
 			return 1;
 		}
 
@@ -233,11 +232,12 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		FILE *fp = fopen(full_path, "rb");
 		if (fp == NULL){
 			perror("Failed to open file\n");
+			printf("Full path is %s\n", full_path);
 			char *not_found = "HTTP/1.1 404 Not Found\r\n"
 				"Content-Type: text/plain\r\n"
 				"Content-Length: 13\r\n"
 				"\r\n"
-				"404 Not Found";
+				"404 Not Found\r\n";
 			write(client_socket, not_found, strlen(not_found));
 			free(full_path);
 			return 1;
@@ -259,7 +259,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 					"Content-Length: 22\r\n"
 					"\r\n"
 					"Internal Server Error";
-				wirte(client_socket, server_error, strlen(server_error);
+				write(client_socket, server_error, strlen(server_error));
 				return 1;
 			}
 
@@ -272,15 +272,15 @@ int handle_method(int client_socket, HttpRequest *client_request){
 					"Content-Type: text/plain\r\n"
 					"Content-Length: 22\r\n"
 					"\r\n"
-					"Internal Server Error";
-				wirte(client_socket, server_error, strlen(server_error);
+					"Internal Server Error\r\n";
+				write(client_socket, server_error, strlen(server_error));
 				return 1;
 			}
 
 			//8. Determine content type in response header
-			const char *content_type = "application/octet-stream" //Default
-			char *file_extension = strrchr(actual_file_path, '.');
-			if (file_extension != NULL && file_extension != actual_file_path){
+			const char *content_type = "application/octet-stream"; //Default
+			char *file_extension = strrchr(final_request_path, '.');
+			if (file_extension != NULL && file_extension != final_request_path){
 				file_extension++;
 				if (strcmp(file_extension, "html") == 0) content_type = "text/html";
 				else if (strcmp(file_extension, "css") == 0) content_type = "text/css";
@@ -310,7 +310,10 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			free(file_content);	
 			free(full_path);
 		}
+		printf("Method handled\n");
 		return 0;
+	}
+	//POST METHOD LOGIC
 }
 
 int main(int argc, char *argv[]){
@@ -372,61 +375,17 @@ int main(int argc, char *argv[]){
 		//6. Parse request header
 		HttpRequest client_request = {0};
 		char *request_line_end = strstr(buffer, "\r\n");
-		parse_client_request(buffer, &client_request, request_line_end);
-
-		//Check if the get header name method works
-		char *host = get_header_name(&client_request, "Host");
-		char *localhostUrl = "127.0.0.1:4040";
-		if (strcmp(host, localhostUrl) == 0) 
-		{
-			printf("The host is: %s\n", host);
-			printf("LocalhostUrl is: %s\n", localhostUrl);
+		int parse_result = parse_client_request(buffer, &client_request, request_line_end);
+		if (parse_result != 0){
+			const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
 		}
-		else
-		{
-			printf("Host: %s is not equal to localhost: %s\n", host, localhostUrl);
-		}
-
-		char *user_agent = get_header_name(&client_request, "User-Agent");
-		if (user_agent)
-		{
-			printf("The user-agent is: %s\n", user_agent);
-		}
-
-		char *connection = get_header_name(&client_request, "Connection");
-		if (connection)
-		{
-			printf("The connection is: %s\n", connection);
-		}
-		
-		//Return method and protocol
-		printf("Method: %s\n", client_request.method);
-		printf("Protocol: %s\n", client_request.protocol);
 
 		//Handle the method
-		int handle_method(&client_request);
-
-		//Return file if it exists
-		char *file_root_directory = "files";
-		char *request_path = client_request.path;
-
-		char *path_buffer = malloc(strlen(file_root_directory)+strlen(request_path));
-		snprintf(path_buffer, sizeof(path_buffer), "%s%s", file_root_directory, request_path);
-
-		if(strcmp(path_buffer, "/")==0){
-			snprintf(path_buffer, sizeof(path_buffer), "%s/index.html", file_root_directory);
-
+		int method_status = handle_method(client_socket, &client_request);
+		if (method_status != 0){
+			fprintf(stderr, "Request handling failed for client socket\n");
 		}
-		
-		char *file_name = strrchr(path_buffer, '/');
-		if (file_name)
-		{
-			file_name++; 
-			printf("Filename: %s\n", file_name);
 
-			//7.Open the file
-
-		}
 		close(client_socket);
 	}
 	return 0;
