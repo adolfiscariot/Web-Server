@@ -8,7 +8,7 @@
 #include <unistd.h> 
 #include <dirent.h>
 
-typedef struct{
+typedef struct{ //Ordered from largest to smallest for better cache alignment
 	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
 	char *path; // /info.html
 	char *query_string; // ?pageNo=5
@@ -100,11 +100,11 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 
 	//5. Fetch the headers
 	/*
-	 * First we find the end of the request line using strstr then
+	 * First we find the end of the request line then
 	 * we use that to find the beginning of the headers. We then
-	 * find the end of the headers using strstr again and replace
+	 * find the end of the headers and replace
 	 * the delimiters with a null terminating character. Afterwards
-	 * we tokenize the headers using strtok, adding a pointer to 
+	 * we tokenize the headers adding a pointer to 
 	 * each header e.g "User Agent" to the headers field. Finally we
 	 * increament header_count by 1.
 	 */
@@ -228,6 +228,14 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		//3. Construct full path
 		snprintf(full_path, full_path_len, "%s%s", directory_name, final_request_path);
 
+		//4. Find headers (Connection only for now)
+		char *header_to_find = "Connection";
+		char *connection_header = get_header_name(client_request, header_to_find);
+
+		//INSERT CONNECTION LOGIC
+		//If Http/1.0 default is close, Http/1.1 it's keep-alive.
+
+
 		//4. Open file. Use rb because not every file will be text.
 		FILE *fp = fopen(full_path, "rb");
 		if (fp == NULL){
@@ -295,10 +303,11 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			char header[1024];
 			sprintf(header,
 					"HTTP/1.1 200 OK\r\n"
-					"Content-Type: text/html\r\n"
+					"Content-Type: %s\r\n"
 					"Content-Length: %ld\r\n"
 					"Connection: close\r\n"
 					"\r\n",
+					content_type,
 					file_size);
 
 			//10. Send header then file content
