@@ -202,6 +202,9 @@ char *get_header_name(HttpRequest *request, char *name)
 int handle_method(int client_socket, HttpRequest *client_request){
 	printf("Handling the method....\n");
 
+	//NOTE: THE BELOW CODE TO HANDLE KEEP-ALIVE CONNECTIONS IS NOT YET IMPLEMENTED! CONNECTION = CLOSE.
+	
+	//=============================================================================
 	//Determine connection type. If HTTP/1.0, default is close but for 1.1 its keep-alive
 	char *request_connection_status = get_header_name(client_request, "Connection");
 	char *protocol = client_request->protocol;
@@ -224,7 +227,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 	} else {
 		response_connection_status = "close";
 	}
-	
+	//=============================================================================
 
 	if (strcmp(client_request->method, "GET") == 0)
 	{
@@ -313,7 +316,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 				else if (strcmp(file_extension, "json") == 0) content_type = "application/json";
 				else if (strcmp(file_extension, "pdf") == 0) content_type = "application/pdf";
 				else if (strcmp(file_extension, "png") == 0) content_type = "image/png";
-				else if (strcmp(file_extension, "jpg") == 0i || strcmp(file_extension, "jpeg") == 0) content_type = "image/jpeg";
+				else if (strcmp(file_extension, "jpg") == 0 || strcmp(file_extension, "jpeg") == 0) content_type = "image/jpeg";
 			}
 
 			//9. Build a Response header
@@ -322,9 +325,9 @@ int handle_method(int client_socket, HttpRequest *client_request){
 					"HTTP/1.1 200 OK\r\n"
 					"Content-Type: text/html\r\n"
 					"Content-Length: %ld\r\n"
-					"Connection: %s\r\n"
+					"Connection: close\r\n"
 					"\r\n",
-					file_size, response_connection_status);
+					file_size);
 
 			//10. Send header then file content
 			write(client_socket, header, strlen(header));
