@@ -197,9 +197,34 @@ char *get_header_name(HttpRequest *request, char *name)
 	return NULL;
 }
 
+
 //Function to handle the request method. Returns 0 for success, 1 for failure
 int handle_method(int client_socket, HttpRequest *client_request){
 	printf("Handling the method....\n");
+
+	//Determine connection type. If HTTP/1.0, default is close but for 1.1 its keep-alive
+	char *request_connection_status = get_header_name(client_request, "Connection");
+	char *protocol = client_request->protocol;
+	char *response_connection_status = "close";
+	
+	if (strcmp(protocol, "HTTP/1.0") == 0){
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "close") == 0){
+			response_connection_status = "close";	
+		} else {
+			response_connection_status = "keep-alive";	
+		}
+
+	} else if (strcmp(protocol, "HTTP/1.1") == 0){
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "keep-alive") == 0){
+			response_connection_status = "keep-alive";	
+		} else {
+			response_connection_status = "close";	
+		}
+
+	} else {
+		response_connection_status = "close";
+	}
+	
 
 	if (strcmp(client_request->method, "GET") == 0)
 	{
@@ -297,14 +322,13 @@ int handle_method(int client_socket, HttpRequest *client_request){
 					"HTTP/1.1 200 OK\r\n"
 					"Content-Type: text/html\r\n"
 					"Content-Length: %ld\r\n"
-					"Connection: close\r\n"
+					"Connection: %s\r\n"
 					"\r\n",
-					file_size);
+					file_size, response_connection_status);
 
 			//10. Send header then file content
 			write(client_socket, header, strlen(header));
 			write(client_socket, file_content, file_size);
-
 
 			//11. Free the memory
 			free(file_content);	
@@ -312,8 +336,18 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		}
 		printf("Method handled\n");
 		return 0;
+
+	} else {
+		fprintf(stderr, "Method Not Allowed\n");
+		char *method_not_allowed = "HTTP/1.1 405 Method Not Allowed\r\n"
+			"Content-Type: text/html\r\n"
+			"Content-Length: 18\r\n"
+			"\r\n"
+			"Method Not Allowed\r\n";
+		write(client_socket, method_not_allowed, strlen(method_not_allowed));
+		return 1;
 	}
-	//POST METHOD LOGIC
+	
 }
 
 int main(int argc, char *argv[]){
