@@ -7,6 +7,8 @@
 #include <netinet/in.h> 
 #include <unistd.h> 
 #include <dirent.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 typedef struct{
 	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
@@ -353,6 +355,17 @@ int handle_method(int client_socket, HttpRequest *client_request){
 	
 }
 
+//Signal handler method
+void signal_handler(int sig){
+	pid_t pid;
+	int status;
+
+	while((pid = waitpid(-1, &status, WNOHANG)) > 0){
+		printf("Process %d has been terminated.\n", pid);
+		return;
+	}
+}
+
 int main(int argc, char *argv[]){
 	// 1. Create a socket
 	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -381,6 +394,13 @@ int main(int argc, char *argv[]){
 	}
 	printf("Server listening on port 4040...\n");
 
+	//Call signal_handler when a child process terminates
+	struct sigaction sa;
+	sa.sa_handler = signal_handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART;
+	sigaction(SIGCHLD, &sa, NULL);
+
 	// 4. Accept connections.
 	while(1){
 		struct sockaddr_in client_addy;
@@ -391,39 +411,50 @@ int main(int argc, char *argv[]){
 			continue;
 		}
 
-		// 5. Read data.
-		char buffer[1024] = {0};
-		int valread = read(client_socket, buffer, sizeof(buffer) - 1);
-		if (valread < 0){
-			fprintf(stderr, "Read failed\n");
-			continue;
-		}
-		else if (valread == 0)
-		{
-			printf("Empty request by client\n");
+		//Create child process to handle client request
+		if (fork() == 0){
+			close(listen_for_connection);
+
+			// 5. Read data.
+			char buffer[1024] = {0};
+			int valread = read(client_socket, buffer, sizeof(buffer) - 1);
+			if (valread < 0){
+				fprintf(stderr, "Read failed\n");
+				continue;
+			}
+			else if (valread == 0)
+			{
+				printf("Empty request by client\n");
+				close(client_socket);
+				return 0;
+			}
+			else {
+				buffer[valread] = '\0';
+				printf("Received from client: %s\n", buffer);
+			}
+
+			//6. Parse request header
+			HttpRequest client_request = {0};
+			char *request_line_end = strstr(buffer, "\r\n");
+			int parse_result = parse_client_request(buffer, &client_request, request_line_end);
+			if (parse_result != 0){
+				const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
+			}
+
+			//Handle the method
+			int method_status = handle_method(client_socket, &client_request);
+			if (method_status != 0){
+				fprintf(stderr, "Request handling failed for client socket\n");
+			}
+
+			//Close client socket for child process
 			close(client_socket);
-			return 0;
-		}
-		else {
-			buffer[valread] = '\0';
-			printf("Received from client: %s\n", buffer);
+			exit(0);
 		}
 
-		//6. Parse request header
-		HttpRequest client_request = {0};
-		char *request_line_end = strstr(buffer, "\r\n");
-		int parse_result = parse_client_request(buffer, &client_request, request_line_end);
-		if (parse_result != 0){
-			const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
-		}
-
-		//Handle the method
-		int method_status = handle_method(client_socket, &client_request);
-		if (method_status != 0){
-			fprintf(stderr, "Request handling failed for client socket\n");
-		}
-
+		//Close client socket for parent process
 		close(client_socket);
+
 	}
 	return 0;
 }
