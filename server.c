@@ -7,6 +7,8 @@
 #include <netinet/in.h> 
 #include <unistd.h> 
 #include <dirent.h>
+#include <sys/wait.h>
+#include <signal.h>
 
 typedef struct{ //Ordered from largest to smallest for better cache alignment
 	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
@@ -197,9 +199,37 @@ char *get_header_name(HttpRequest *request, char *name)
 	return NULL;
 }
 
+
 //Function to handle the request method. Returns 0 for success, 1 for failure
 int handle_method(int client_socket, HttpRequest *client_request){
 	printf("Handling the method....\n");
+
+	//NOTE: THE BELOW CODE TO HANDLE KEEP-ALIVE CONNECTIONS IS NOT YET IMPLEMENTED! CONNECTION = CLOSE.
+	
+	//=============================================================================
+	//Determine connection type. If HTTP/1.0, default is close but for 1.1 its keep-alive
+	char *request_connection_status = get_header_name(client_request, "Connection");
+	char *protocol = client_request->protocol;
+	char *response_connection_status = "close";
+	
+	if (strcmp(protocol, "HTTP/1.0") == 0){
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "close") == 0){
+			response_connection_status = "close";	
+		} else {
+			response_connection_status = "keep-alive";	
+		}
+
+	} else if (strcmp(protocol, "HTTP/1.1") == 0){
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "keep-alive") == 0){
+			response_connection_status = "keep-alive";	
+		} else {
+			response_connection_status = "close";	
+		}
+
+	} else {
+		response_connection_status = "close";
+	}
+	//=============================================================================
 
 	if (strcmp(client_request->method, "GET") == 0)
 	{
@@ -296,7 +326,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 				else if (strcmp(file_extension, "json") == 0) content_type = "application/json";
 				else if (strcmp(file_extension, "pdf") == 0) content_type = "application/pdf";
 				else if (strcmp(file_extension, "png") == 0) content_type = "image/png";
-				else if (strcmp(file_extension, "jpg") == 0i || strcmp(file_extension, "jpeg") == 0) content_type = "image/jpeg";
+				else if (strcmp(file_extension, "jpg") == 0 || strcmp(file_extension, "jpeg") == 0) content_type = "image/jpeg";
 			}
 
 			//9. Build a Response header
@@ -314,15 +344,35 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			write(client_socket, header, strlen(header));
 			write(client_socket, file_content, file_size);
 
-
 			//11. Free the memory
 			free(file_content);	
 			free(full_path);
 		}
 		printf("Method handled\n");
 		return 0;
+
+	} else {
+		fprintf(stderr, "Method Not Allowed\n");
+		char *method_not_allowed = "HTTP/1.1 405 Method Not Allowed\r\n"
+			"Content-Type: text/html\r\n"
+			"Content-Length: 18\r\n"
+			"\r\n"
+			"Method Not Allowed\r\n";
+		write(client_socket, method_not_allowed, strlen(method_not_allowed));
+		return 1;
 	}
-	//POST METHOD LOGIC
+	
+}
+
+//Signal handler method
+void signal_handler(int sig){
+	pid_t pid;
+	int status;
+
+	while((pid = waitpid(-1, &status, WNOHANG)) > 0){
+		printf("Process %d has been terminated.\n", pid);
+		return;
+	}
 }
 
 int main(int argc, char *argv[]){
@@ -353,6 +403,13 @@ int main(int argc, char *argv[]){
 	}
 	printf("Server listening on port 4040...\n");
 
+	//Call signal_handler when a child process terminates
+	struct sigaction sa;
+	sa.sa_handler = signal_handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART;
+	sigaction(SIGCHLD, &sa, NULL);
+
 	// 4. Accept connections.
 	while(1){
 		struct sockaddr_in client_addy;
@@ -363,39 +420,50 @@ int main(int argc, char *argv[]){
 			continue;
 		}
 
-		// 5. Read data.
-		char buffer[1024] = {0};
-		int valread = read(client_socket, buffer, sizeof(buffer) - 1);
-		if (valread < 0){
-			fprintf(stderr, "Read failed\n");
-			continue;
-		}
-		else if (valread == 0)
-		{
-			printf("Empty request by client\n");
+		//Create child process to handle client request
+		if (fork() == 0){
+			close(listen_for_connection);
+
+			// 5. Read data.
+			char buffer[1024] = {0};
+			int valread = read(client_socket, buffer, sizeof(buffer) - 1);
+			if (valread < 0){
+				fprintf(stderr, "Read failed\n");
+				continue;
+			}
+			else if (valread == 0)
+			{
+				printf("Empty request by client\n");
+				close(client_socket);
+				return 0;
+			}
+			else {
+				buffer[valread] = '\0';
+				printf("Received from client: %s\n", buffer);
+			}
+
+			//6. Parse request header
+			HttpRequest client_request = {0};
+			char *request_line_end = strstr(buffer, "\r\n");
+			int parse_result = parse_client_request(buffer, &client_request, request_line_end);
+			if (parse_result != 0){
+				const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
+			}
+
+			//Handle the method
+			int method_status = handle_method(client_socket, &client_request);
+			if (method_status != 0){
+				fprintf(stderr, "Request handling failed for client socket\n");
+			}
+
+			//Close client socket for child process
 			close(client_socket);
-			return 0;
-		}
-		else {
-			buffer[valread] = '\0';
-			printf("Received from client: %s\n", buffer);
+			exit(0);
 		}
 
-		//6. Parse request header
-		HttpRequest client_request = {0};
-		char *request_line_end = strstr(buffer, "\r\n");
-		int parse_result = parse_client_request(buffer, &client_request, request_line_end);
-		if (parse_result != 0){
-			const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
-		}
-
-		//Handle the method
-		int method_status = handle_method(client_socket, &client_request);
-		if (method_status != 0){
-			fprintf(stderr, "Request handling failed for client socket\n");
-		}
-
+		//Close client socket for parent process
 		close(client_socket);
+
 	}
 	return 0;
 }
