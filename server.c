@@ -20,6 +20,9 @@ typedef struct{ //Ordered from largest to smallest for better cache alignment
 	int header_count; // # of headers
 } HttpRequest;
 
+//Semaphore for global count of processes. Must be a non-negativer integer.
+volatile uint32_t connection_count = 0;
+
 //Parse Header
 int parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
 	HttpRequest request = {0}; //initialize all struct values to NULL;
@@ -419,48 +422,60 @@ int main(int argc, char *argv[]){
 
 		//Create child process to handle client request
 		if (fork() == 0){
-			close(listen_for_connection);
+			if (connection_count < 10){
+				//Close child listening socket
+				close(listen_for_connection);
 
-			// 5. Read data.
-			char buffer[1024] = {0};
-			int valread = read(client_socket, buffer, sizeof(buffer) - 1);
-			if (valread < 0){
-				fprintf(stderr, "Read failed\n");
-				continue;
-			}
-			else if (valread == 0)
-			{
-				printf("Empty request by client\n");
+				//Add 1 to semaphore
+				connection_count += 1;
+				printf("Connection count is currently: %d\n", connection_count);
+
+				// 5. Read data.
+				char buffer[1024] = {0};
+				int valread = read(client_socket, buffer, sizeof(buffer) - 1);
+				if (valread < 0){
+					fprintf(stderr, "Read failed\n");
+					continue;
+				}
+				else if (valread == 0)
+				{
+					printf("Empty request by client\n");
+					close(client_socket);
+					return 0;
+				}
+				else {
+					buffer[valread] = '\0';
+					printf("Received from client: %s\n", buffer);
+				}
+
+				//6. Parse request header
+				HttpRequest client_request = {0};
+				char *request_line_end = strstr(buffer, "\r\n");
+				int parse_result = parse_client_request(buffer, &client_request, request_line_end);
+				if (parse_result != 0){
+					const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
+				}
+
+				//Handle the method
+				int method_status = handle_method(client_socket, &client_request);
+				if (method_status != 0){
+					fprintf(stderr, "Request handling failed for client socket\n");
+				}
+
+				//Close client socket for child process
 				close(client_socket);
-				return 0;
+				exit(0);
 			}
-			else {
-				buffer[valread] = '\0';
-				printf("Received from client: %s\n", buffer);
-			}
-
-			//6. Parse request header
-			HttpRequest client_request = {0};
-			char *request_line_end = strstr(buffer, "\r\n");
-			int parse_result = parse_client_request(buffer, &client_request, request_line_end);
-			if (parse_result != 0){
-				const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
-			}
-
-			//Handle the method
-			int method_status = handle_method(client_socket, &client_request);
-			if (method_status != 0){
-				fprintf(stderr, "Request handling failed for client socket\n");
-			}
-
-			//Close client socket for child process
-			close(client_socket);
-			exit(0);
+			//No more connections allowed 
+			fprintf(stderr, "No more connections allowed\n");
+			char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
+				"Content-Type: text/html\r\n"
+				"Content-Length: 22\r\n"
+				"\r\n"
+				"Internal Server Error";
 		}
-
 		//Close client socket for parent process
 		close(client_socket);
-
 	}
 	return 0;
 }
