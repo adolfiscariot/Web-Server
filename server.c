@@ -9,6 +9,9 @@
 #include <dirent.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <semaphore.h>
+
+#define OPEN_MAX 10 //Max number of forks
 
 typedef struct{ //Ordered from largest to smallest for better cache alignment
 	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
@@ -20,8 +23,12 @@ typedef struct{ //Ordered from largest to smallest for better cache alignment
 	int header_count; // # of headers
 } HttpRequest;
 
-//Semaphore for global count of processes. Must be a non-negativer integer.
-volatile uint32_t connection_count = 0;
+//Semaphore for global count of processes. .
+sem_t semaphore;
+if(sem_init(&semaphore, 1, 1) != 0){
+	perror("Semaphore initialization failed\n");
+	exit(1);
+}
 
 //Parse Header
 int parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
@@ -394,7 +401,7 @@ int main(int argc, char *argv[]){
 	int listen_for_connection = listen(server_fd, 5);
 	if (listen_for_connection < 0){
 		perror("Listening failed\n");
-		exit(EXIT_FAILURE);
+		exit(1);
 	}
 	printf("Server listening on port 4040...\n");
 
@@ -422,6 +429,7 @@ int main(int argc, char *argv[]){
 
 		//Create child process to handle client request
 		if (fork() == 0){
+			//THIS NEEDS TO GO!!!!!:w
 			if (connection_count < 10){
 				//Close child listening socket
 				close(listen_for_connection);
