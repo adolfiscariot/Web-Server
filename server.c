@@ -10,6 +10,9 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define OPEN_MAX 10 //Max number of forks
 
@@ -25,8 +28,8 @@ typedef struct{ //Ordered from largest to smallest for better cache alignment
 
 //Semaphore for global count of processes. .
 sem_t semaphore;
-if(sem_init(&semaphore, 1, 1) != 0){
-	perror("Semaphore initialization failed\n");
+if(sem_init(&semaphore, 1, 0) != 0){
+	perror("Semaphore initialization failed");
 	exit(1);
 }
 
@@ -427,63 +430,65 @@ int main(int argc, char *argv[]){
 		inet_ntop(AF_INET, &(client_addy.sin_addr), client_ip, INET_ADDRSTRLEN);
 		printf("Client's IP Address: %s\n", client_ip);
 
+		//Create memory mapping for sempahore
+		if (mmap(NULL, sizeof(semaphore), PROT READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS) == MAP_FAILED){
+			perror("Sempahore memory mapping failed\n");
+			exit(1);
+		}
+
 		//Create child process to handle client request
 		if (fork() == 0){
-			//THIS NEEDS TO GO!!!!!:w
-			if (connection_count < 10){
-				//Close child listening socket
-				close(listen_for_connection);
-
-				//Add 1 to semaphore
-				connection_count += 1;
-				printf("Connection count is currently: %d\n", connection_count);
-
-				// 5. Read data.
-				char buffer[1024] = {0};
-				int valread = read(client_socket, buffer, sizeof(buffer) - 1);
-				if (valread < 0){
-					fprintf(stderr, "Read failed\n");
-					continue;
-				}
-				else if (valread == 0)
-				{
-					printf("Empty request by client\n");
-					close(client_socket);
-					return 0;
-				}
-				else {
-					buffer[valread] = '\0';
-					printf("Received from client: %s\n", buffer);
-				}
-
-				//6. Parse request header
-				HttpRequest client_request = {0};
-				char *request_line_end = strstr(buffer, "\r\n");
-				int parse_result = parse_client_request(buffer, &client_request, request_line_end);
-				if (parse_result != 0){
-					const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
-				}
-
-				//Handle the method
-				int method_status = handle_method(client_socket, &client_request);
-				if (method_status != 0){
-					fprintf(stderr, "Request handling failed for client socket\n");
-				}
-
-				//Close client socket for child process
-				close(client_socket);
-				exit(0);
+			int sem_value;
+			sem_post(&semaphore);
+			printf("Semaphore %d doing work\n", sem_getvalue(&semaphore, &sem_value));
+			
+			// 5. Read data.
+			char buffer[1024] = {0};
+			int valread = read(client_socket, buffer, sizeof(buffer) - 1);
+			if (valread < 0){
+				fprintf(stderr, "Read failed\n");
+				continue;
 			}
-			//No more connections allowed 
-			fprintf(stderr, "No more connections allowed\n");
-			char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
-				"Content-Type: text/html\r\n"
-				"Content-Length: 22\r\n"
-				"\r\n"
-				"Internal Server Error";
+			else if (valread == 0)
+			{
+				printf("Empty request by client\n");
+				close(client_socket);
+				return 0;
+			}
+			else {
+				buffer[valread] = '\0';
+				printf("Received from client: %s\n", buffer);
+			}
+
+			//6. Parse request header
+			HttpRequest client_request = {0};
+			char *request_line_end = strstr(buffer, "\r\n");
+			int parse_result = parse_client_request(buffer, &client_request, request_line_end);
+			if (parse_result != 0){
+				const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
+			}
+
+			//Handle the method
+			int method_status = handle_method(client_socket, &client_request);
+			if (method_status != 0){
+				fprintf(stderr, "Request handling failed for client socket\n");
+			}
+
+			sem_wait(&semaphore);
+			//Close client socket for child process
+			close(client_socket);
+			exit(0);
 		}
-		//Close client socket for parent process
-		close(client_socket);
+		//No more connections allowed 
+		fprintf(stderr, "No more connections allowed\n");
+		char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
+			"Content-Type: text/html\r\n"
+			"Content-Length: 22\r\n"
+			"\r\n"
+			"Internal Server Error";
+		}
+	//Close client socket for parent process
+	close(client_socket);
 	}
 	return 0;
 }
