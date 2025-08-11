@@ -413,7 +413,7 @@ int main(int argc, char *argv[]){
 	sigaction(SIGCHLD, &sa, NULL);
 
 	//Semaphore memory mapping
-	semaphore = mmap(NULL, sizeof(semaphore), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	semaphore = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 	if (semaphore == MAP_FAILED){
 		perror("Sempahore memory mapping failed");
 		exit(1);
@@ -447,7 +447,8 @@ int main(int argc, char *argv[]){
 		}
 
 		//Create child process to handle client request
-		if (fork() == 0){
+		pid_t pid = fork();
+		if (pid == 0){
 			
 			// 5. Read data.
 			char buffer[1024] = {0};
@@ -499,6 +500,9 @@ int main(int argc, char *argv[]){
 		//Close client socket for parent process
 		close(client_socket);
 	}
+	sem_destroy(semaphore);
+	munmap(semaphore, sizeof(sem_t);
+	close(server_fd);
 	return 0;
 }
 
