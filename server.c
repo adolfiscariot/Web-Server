@@ -26,12 +26,9 @@ typedef struct{ //Ordered from largest to smallest for better cache alignment
 	int header_count; // # of headers
 } HttpRequest;
 
-//Semaphore for global count of processes. .
-sem_t semaphore;
-if(sem_init(&semaphore, 1, 0) != 0){
-	perror("Semaphore initialization failed");
-	exit(1);
-}
+//Semaphore global declaration
+sem_t *semaphore;
+
 
 //Parse Header
 int parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
@@ -415,6 +412,18 @@ int main(int argc, char *argv[]){
 	sa.sa_flags = SA_RESTART;
 	sigaction(SIGCHLD, &sa, NULL);
 
+	//Semaphore memory mapping
+	semaphore = mmap(NULL, sizeof(semaphore), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+	if (semaphore == MAP_FAILED){
+		perror("Sempahore memory mapping failed");
+		exit(1);
+	}
+
+	//Initialize semaphore with 10 max processes
+	if(sem_init(semaphore, 1, OPEN_MAX) != 0){
+		perror("Semaphore initialization failed");
+		exit(1);
+	}
 	// 4. Accept connections.
 	while(1){
 		struct sockaddr_in client_addy;
@@ -430,17 +439,15 @@ int main(int argc, char *argv[]){
 		inet_ntop(AF_INET, &(client_addy.sin_addr), client_ip, INET_ADDRSTRLEN);
 		printf("Client's IP Address: %s\n", client_ip);
 
-		//Create memory mapping for sempahore
-		if (mmap(NULL, sizeof(semaphore), PROT READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS) == MAP_FAILED){
-			perror("Sempahore memory mapping failed\n");
-			exit(1);
+		//Check if there's an available slot before creating a new child
+		if (sem_wait(semaphore) != 0){
+			perror("sem_wait failed");
+			close(client_socket);
+			continue;
 		}
 
 		//Create child process to handle client request
 		if (fork() == 0){
-			int sem_value;
-			sem_post(&semaphore);
-			printf("Semaphore %d doing work\n", sem_getvalue(&semaphore, &sem_value));
 			
 			// 5. Read data.
 			char buffer[1024] = {0};
@@ -474,7 +481,9 @@ int main(int argc, char *argv[]){
 				fprintf(stderr, "Request handling failed for client socket\n");
 			}
 
-			sem_wait(&semaphore);
+			//Release the slot
+			sem_post(semaphore);
+
 			//Close client socket for child process
 			close(client_socket);
 			exit(0);
@@ -486,10 +495,11 @@ int main(int argc, char *argv[]){
 			"Content-Length: 22\r\n"
 			"\r\n"
 			"Internal Server Error";
-		}
-	//Close client socket for parent process
-	close(client_socket);
+		
+		//Close client socket for parent process
+		close(client_socket);
 	}
 	return 0;
 }
+
 
