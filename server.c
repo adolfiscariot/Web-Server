@@ -448,7 +448,18 @@ int main(int argc, char *argv[]){
 
 		//Create child process to handle client request
 		pid_t pid = fork();
-		if (pid == 0){
+
+		if (pid < 0){
+			perror("Fork failed");
+			sem_post(semaphore);
+			close(client_socket);
+			continue;
+		}
+
+		else if (pid == 0){
+			
+			//Child doesn't need to listen to this socket
+			close(server_fd);
 			
 			// 5. Read data.
 			char buffer[1024] = {0};
@@ -474,6 +485,9 @@ int main(int argc, char *argv[]){
 			int parse_result = parse_client_request(buffer, &client_request, request_line_end);
 			if (parse_result != 0){
 				const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
+				sem_post(semaphore);
+				close(client_socket);
+				exit(0);
 			}
 
 			//Handle the method
@@ -489,19 +503,21 @@ int main(int argc, char *argv[]){
 			close(client_socket);
 			exit(0);
 		}
-		//No more connections allowed 
-		fprintf(stderr, "No more connections allowed\n");
-		char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
-			"Content-Type: text/html\r\n"
-			"Content-Length: 22\r\n"
-			"\r\n"
-			"Internal Server Error";
-		
-		//Close client socket for parent process
-		close(client_socket);
+		else{
+			//No more connections allowed 
+			fprintf(stderr, "No more connections allowed\n");
+			char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
+				"Content-Type: text/html\r\n"
+				"Content-Length: 22\r\n"
+				"\r\n"
+				"Internal Server Error";
+			
+			//Close client socket for parent process
+			close(client_socket);
+		}
 	}
 	sem_destroy(semaphore);
-	munmap(semaphore, sizeof(sem_t);
+	munmap(semaphore, sizeof(sem_t));
 	close(server_fd);
 	return 0;
 }
