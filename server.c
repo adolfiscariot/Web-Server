@@ -373,7 +373,6 @@ void signal_handler(int sig){
 
 	while((pid = waitpid(-1, &status, WNOHANG)) > 0){
 		printf("Process %d has been terminated.\n", pid);
-		return;
 	}
 }
 
@@ -410,7 +409,11 @@ int main(int argc, char *argv[]){
 	sa.sa_handler = signal_handler;
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = SA_RESTART;
-	sigaction(SIGCHLD, &sa, NULL);
+	if(sigaction(SIGCHLD, &sa, NULL) == -1){
+		perror("Sigaction failed");
+		close(server_fd);
+		exit(1);
+	}
 
 	//Semaphore memory mapping
 	semaphore = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -449,35 +452,30 @@ int main(int argc, char *argv[]){
 		//Create child process to handle client request
 		pid_t pid = fork();
 
-		if (pid < 0){
+		if (pid == -1){
 			perror("Fork failed");
 			sem_post(semaphore);
 			close(client_socket);
 			continue;
 		}
 
-		else if (pid == 0){
+		if (pid == 0){
 			
-			//Child doesn't need to listen to this socket
+			//Child closes listening socket
 			close(server_fd);
 			
 			// 5. Read data.
 			char buffer[1024] = {0};
 			int valread = read(client_socket, buffer, sizeof(buffer) - 1);
-			if (valread < 0){
-				fprintf(stderr, "Read failed\n");
-				continue;
-			}
-			else if (valread == 0)
-			{
-				printf("Empty request by client\n");
+			if (valread <= 0){
+				perror("Read failed or empty request");
+				sem_post(semaphore);
 				close(client_socket);
-				return 0;
+				exit(1);
 			}
-			else {
-				buffer[valread] = '\0';
-				printf("Received from client: %s\n", buffer);
-			}
+
+			buffer[valread] = '\0';
+			printf("Received from client: %s\n", buffer);
 
 			//6. Parse request header
 			HttpRequest client_request = {0};
@@ -503,18 +501,16 @@ int main(int argc, char *argv[]){
 			close(client_socket);
 			exit(0);
 		}
-		else{
-			//No more connections allowed 
-			fprintf(stderr, "No more connections allowed\n");
-			char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
-				"Content-Type: text/html\r\n"
-				"Content-Length: 22\r\n"
-				"\r\n"
-				"Internal Server Error";
-			
-			//Close client socket for parent process
-			close(client_socket);
-		}
+		//No more connections allowed 
+		fprintf(stderr, "No more connections allowed\n");
+		char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
+			"Content-Type: text/html\r\n"
+			"Content-Length: 22\r\n"
+			"\r\n"
+			"Internal Server Error";
+		
+		//Close client socket for parent process
+		close(client_socket);
 	}
 	sem_destroy(semaphore);
 	munmap(semaphore, sizeof(sem_t));
