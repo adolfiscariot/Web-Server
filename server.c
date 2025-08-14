@@ -29,7 +29,6 @@ typedef struct{ //Ordered from largest to smallest for better cache alignment
 //Semaphore global declaration
 sem_t *semaphore;
 
-
 //Parse Header
 int parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
 	HttpRequest request = {0}; //initialize all struct values to NULL;
@@ -501,13 +500,6 @@ int main(int argc, char *argv[]){
 			close(client_socket);
 			exit(0);
 		}
-		//No more connections allowed 
-		fprintf(stderr, "No more connections allowed\n");
-		char *no_more_connections = "HTTP/1.1 500 Internal Server Error\r\n"
-			"Content-Type: text/html\r\n"
-			"Content-Length: 22\r\n"
-			"\r\n"
-			"Internal Server Error";
 		
 		//Close client socket for parent process
 		close(client_socket);
