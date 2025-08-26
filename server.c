@@ -208,37 +208,40 @@ char *get_header_name(HttpRequest *request, char *name)
 	return NULL;
 }
 
+//Function to handle connection status. Returns 0 (close) or 1 (keep alive)
+int handle_connection(HttpRequest *client_request){
+	int keep_alive = 0; /* Initialize keep alive to be 0 */
+	
+	//Get the request's connection status
+	char *request_connection_status = get_header_name(client_request, "Connection");	
+
+	//Get the request's protocol. HTTP/1.0 deafult = close. HTTP/1.1 default = keep-alive.
+	char *protocol = client_request->protocol;
+	if (strcmp (protocol, "HTTP/1.0") == 0){
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "close") == 0) {
+			keep_alive = 0;
+		} else {
+			keep_alive = 1;
+		}
+	} else if(strcmp (protocol, "HTTP/1.1") == 0){
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "keep-alive") == 0){
+			keep_alive = 1;
+		} else {
+			keep_alive = 0;
+		}
+
+	} else {
+		keep_alive = 0;
+
+	}
+
+	return keep_alive;
+}
+
 
 //Function to handle the request method. Returns 0 for success, 1 for failure
 int handle_method(int client_socket, HttpRequest *client_request){
 	printf("Handling the method....\n");
-
-	//NOTE: THE BELOW CODE TO HANDLE KEEP-ALIVE CONNECTIONS IS NOT YET IMPLEMENTED! CONNECTION = CLOSE.
-	
-	//=============================================================================
-	//Determine connection type. If HTTP/1.0, default is close but for 1.1 its keep-alive
-	char *request_connection_status = get_header_name(client_request, "Connection");
-	char *protocol = client_request->protocol;
-	char *response_connection_status = "close";
-	
-	if (strcmp(protocol, "HTTP/1.0") == 0){
-		if (request_connection_status != NULL && strcasecmp(request_connection_status, "close") == 0){
-			response_connection_status = "close";	
-		} else {
-			response_connection_status = "keep-alive";	
-		}
-
-	} else if (strcmp(protocol, "HTTP/1.1") == 0){
-		if (request_connection_status != NULL && strcasecmp(request_connection_status, "keep-alive") == 0){
-			response_connection_status = "keep-alive";	
-		} else {
-			response_connection_status = "close";	
-		}
-
-	} else {
-		response_connection_status = "close";
-	}
-	//=============================================================================
 
 	if (strcmp(client_request->method, "GET") == 0)
 	{
@@ -307,7 +310,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 				free(file_content);
 				fclose(fp);
 				free(full_path);
-				char *server_error = "HTTP/1.1 500 Internal Server Error\r\n"
+				char *server_error = "HTTP/1.1 500 Internal Server Error\n"
 					"Content-Type: text/plain\r\n"
 					"Content-Length: 22\r\n"
 					"\r\n"
@@ -315,7 +318,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 				write(client_socket, server_error, strlen(server_error));
 				return 1;
 			}
-
+			
 			//8. Determine content type in response header
 			const char *content_type = "application/octet-stream"; //Default
 			char *file_extension = strrchr(final_request_path, '.');
@@ -330,16 +333,27 @@ int handle_method(int client_socket, HttpRequest *client_request){
 				else if (strcmp(file_extension, "jpg") == 0 || strcmp(file_extension, "jpeg") == 0) content_type = "image/jpeg";
 			}
 
-			//9. Build a Response header
+			//9. Check the connection 
+			int conn_status = handle_connection(client_request);
+			char *conn;
+			if (conn_status == 0){
+				conn = "close";
+			}
+			else {
+				conn = "keep-alive";
+			}
+
+			//10. Build a Response header
 			char header[1024];
 			sprintf(header,
 					"HTTP/1.1 200 OK\r\n"
 					"Content-Type: %s\r\n"
 					"Content-Length: %ld\r\n"
-					"Connection: close\r\n"
+					"Connection: %s\r\n"
 					"\r\n",
 					content_type,
-					file_size);
+					file_size,
+					conn);
 
 			//10. Send header then file content
 			write(client_socket, header, strlen(header));
@@ -351,8 +365,12 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		}
 		printf("Method handled\n");
 		return 0;
+	}
 
-	} else {
+	//=====================POST METHOD==================
+
+
+	else {
 		fprintf(stderr, "Method Not Allowed\n");
 		char *method_not_allowed = "HTTP/1.1 405 Method Not Allowed\r\n"
 			"Content-Type: text/html\r\n"
@@ -509,5 +527,4 @@ int main(int argc, char *argv[]){
 	close(server_fd);
 	return 0;
 }
-
 
