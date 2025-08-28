@@ -480,36 +480,42 @@ int main(int argc, char *argv[]){
 			
 			//Child closes listening socket
 			close(server_fd);
-			
-			// 5. Read data.
-			char buffer[1024] = {0};
-			int valread = read(client_socket, buffer, sizeof(buffer) - 1);
-			if (valread <= 0){
-				perror("Read failed or empty request");
-				sem_post(semaphore);
-				close(client_socket);
-				exit(1);
-			}
 
-			buffer[valread] = '\0';
-			printf("Received from client: %s\n", buffer);
+			int connection_status;
+			do{
+				// 5. Read data.
+				char buffer[1024] = {0};
+				int valread = read(client_socket, buffer, sizeof(buffer) - 1);
+				if (valread <= 0){
+					perror("Read failed or empty request");
+					sem_post(semaphore);
+					close(client_socket);
+					exit(1);
+				}
 
-			//6. Parse request header
-			HttpRequest client_request = {0};
-			char *request_line_end = strstr(buffer, "\r\n");
-			int parse_result = parse_client_request(buffer, &client_request, request_line_end);
-			if (parse_result != 0){
-				const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
-				sem_post(semaphore);
-				close(client_socket);
-				exit(0);
-			}
+				buffer[valread] = '\0';
+				printf("Received from client: %s\n", buffer);
 
-			//Handle the method
-			int method_status = handle_method(client_socket, &client_request);
-			if (method_status != 0){
-				fprintf(stderr, "Request handling failed for client socket\n");
-			}
+				//6. Parse request header
+				HttpRequest client_request = {0};
+				char *request_line_end = strstr(buffer, "\r\n");
+				int parse_result = parse_client_request(buffer, &client_request, request_line_end);
+				if (parse_result != 0){
+					const char *bad_result = "HTTP/1.1 400 Bad Request\r\n\r\n";
+					sem_post(semaphore);
+					close(client_socket);
+					exit(0);
+				}
+
+				//Handle the method
+				int method_status = handle_method(client_socket, &client_request);
+				if (method_status != 0){
+					fprintf(stderr, "Request handling failed for client socket\n");
+				}
+
+				//Determine the connection
+				connection_status = handle_connection(&client_request);
+			}while(connection_status == 1);
 
 			//Release the slot
 			sem_post(semaphore);
