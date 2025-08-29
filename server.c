@@ -21,7 +21,7 @@ typedef struct{ //Ordered from largest to smallest for better cache alignment
 	char *path; // /info.html
 	char *query_string; // ?pageNo=5
 	char *protocol; // HTTP/1.1
-	char *body; // User in POST, PUT methods e.g form submissions
+	char *body; // Used in POST, PUT methods e.g form submissions
 	char method[8]; //GET, POST, etc
 	int header_count; // # of headers
 } HttpRequest;
@@ -368,6 +368,12 @@ int handle_method(int client_socket, HttpRequest *client_request){
 	}
 
 	//=====================POST METHOD==================
+	/*
+	 *Check if the method is post. Check content length. Convert it to an integer. Read that 
+	 *many bytes from the request (only after 'r/n/r/n') into a buffer. Perform different actions
+	 *based on the content ty) into a buffer. Perform different actions
+	 *based on the content type. Send a response.
+	 */
 
 
 	else {
@@ -427,7 +433,7 @@ int main(int argc, char *argv[]){
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = SA_RESTART;
 	if(sigaction(SIGCHLD, &sa, NULL) == -1){
-		perror("Sigaction failed");
+		perror("Sigaction failed\n");
 		close(server_fd);
 		exit(1);
 	}
@@ -435,13 +441,13 @@ int main(int argc, char *argv[]){
 	//Semaphore memory mapping
 	semaphore = mmap(NULL, sizeof(sem_t), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 	if (semaphore == MAP_FAILED){
-		perror("Sempahore memory mapping failed");
+		perror("Sempahore memory mapping failed\n");
 		exit(1);
 	}
 
 	//Initialize semaphore with 10 max processes
 	if(sem_init(semaphore, 1, OPEN_MAX) != 0){
-		perror("Semaphore initialization failed");
+		perror("Semaphore initialization failed\n");
 		exit(1);
 	}
 	// 4. Accept connections.
@@ -461,7 +467,7 @@ int main(int argc, char *argv[]){
 
 		//Check if there's an available slot before creating a new child
 		if (sem_wait(semaphore) != 0){
-			perror("sem_wait failed");
+			perror("sem_wait failed\n");
 			close(client_socket);
 			continue;
 		}
@@ -470,7 +476,7 @@ int main(int argc, char *argv[]){
 		pid_t pid = fork();
 
 		if (pid == -1){
-			perror("Fork failed");
+			perror("Fork failed\n");
 			sem_post(semaphore);
 			close(client_socket);
 			continue;
@@ -486,8 +492,14 @@ int main(int argc, char *argv[]){
 				// 5. Read data.
 				char buffer[1024] = {0};
 				int valread = read(client_socket, buffer, sizeof(buffer) - 1);
-				if (valread <= 0){
-					perror("Read failed or empty request");
+				if (valread ==  0){
+					perror("End of file");
+					sem_post(semaphore);
+					close(client_socket);
+					exit(1);
+				}
+				else if (valread < 0){
+					perror("Read failed or empty request\n");
 					sem_post(semaphore);
 					close(client_socket);
 					exit(1);
