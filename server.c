@@ -180,7 +180,7 @@ char *get_header_name(HttpRequest *request, char *name)
 	{
 		if (request->headers[i] == NULL)
 		{
-			printf("Header not found. Skipping\n");
+			printf("Header not found. Skipping.\n");
 			continue;
 		}
 
@@ -237,7 +237,6 @@ int handle_connection(HttpRequest *client_request){
 
 	return keep_alive;
 }
-
 
 //Function to handle the request method. Returns 0 for success, 1 for failure
 int handle_method(int client_socket, HttpRequest *client_request){
@@ -369,11 +368,65 @@ int handle_method(int client_socket, HttpRequest *client_request){
 
 	//=====================POST METHOD==================
 	/*
-	 *Check if the method is post. Check content length. Convert it to an integer. Read that 
-	 *many bytes from the request (only after 'r/n/r/n') into a buffer. Perform different actions
-	 *based on the content ty) into a buffer. Perform different actions
+	 *Check if the method is post. Check content length and convert it to an integer. Read that 
+	 *many bytes from the request body (after 'r/n/r/n') into a buffer. Perform different actions
 	 *based on the content type. Send a response.
 	 */
+	if (strcmp(client_request->method, "POST") == 0){
+		printf("Handling POST method...\n");
+
+		//1. Get Content-Length header
+		char *content_length_str = get_header_name(client_request, "Content-Length");
+		if (content_length_str == NULL){
+			perror("Content length not found in reqest header\n");
+			char *no_content_length = "HTTP/1.1 400 Bad Request\r\n\r\n";
+			write(client_socket, no_content_length, strlen(no_content_length));
+			return 1;
+		}
+
+		//2. Convert str to int
+		long content_length = atoi(content_length_str);
+		if (content_length <= 0){
+			perror("Invalid content length\n");
+			char *no_content_length = "HTTP/1.1 400 Bad Request\r\n\r\n";
+			write(client_socket, no_content_length, strlen(no_content_length));
+			return 1;
+		}
+		
+		//3. Allocate memory for request body
+		char *request_body = malloc(content_length + 1);
+		if (request_body == NULL){
+			perror("Failed to allocate memory\n");
+			char *server_error = "HTTP/1.1 500 Internal Server Error\r\n\r\n";
+			write(client_socket, server_error, strlen(server_error));
+			return 1;
+		}
+
+		//4. Read content_length bytes from network buffer to request_body_buffer
+		int total_bytes_read = 0;
+		while (total_bytes_read < content_length){
+			int bytes_read = read(client_socket, request_body + total_bytes_read, content_length - total_bytes_read);
+			if (bytes_read <= 0){
+				perror("Failed to read all bytes of the request body\n");
+				free(request_body);
+				return 1;
+			}
+			total_bytes_read += bytes_read;
+		}
+		request_body[content_length] = '\0';
+		printf("The content length is %ld\n", content_length);
+		printf("The request body is %s\n", request_body);
+
+		//5. Send success response
+		chat *success_response = "HTTP/1.1 200 OK\r\n"
+			"Content-Type: text/plain\r\n"
+			"Content-Length: 26\r\n"
+			"\r\n"
+			"POST request processed.\r\n";
+		write(client_socket, success_response, strlen(success_response));
+		free(request_body);
+		return 0;
+	}
 
 
 	else {
