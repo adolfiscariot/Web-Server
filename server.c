@@ -402,7 +402,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			return 1;
 		}
 
-		//4. Read content_length bytes from network buffer to request_body_buffer
+		//4. Read content_length bytes from network buffer to request_body
 		int total_bytes_read = 0;
 		while (total_bytes_read < content_length){
 			int bytes_read = read(client_socket, request_body + total_bytes_read, content_length - total_bytes_read);
@@ -418,11 +418,11 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		printf("The request body is %s\n", request_body);
 
 		//5. Send success response
-		chat *success_response = "HTTP/1.1 200 OK\r\n"
+		char *success_response = "HTTP/1.1 200 OK\r\n"
 			"Content-Type: text/plain\r\n"
 			"Content-Length: 26\r\n"
 			"\r\n"
-			"POST request processed.\r\n";
+			"POST request processed\r\n";
 		write(client_socket, success_response, strlen(success_response));
 		free(request_body);
 		return 0;
