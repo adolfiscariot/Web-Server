@@ -13,6 +13,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <limits.h>
 
 #define OPEN_MAX 10 //Max number of forks
 
@@ -240,7 +241,7 @@ int handle_connection(HttpRequest *client_request){
 
 //Function to handle the request method. Returns 0 for success, 1 for failure
 int handle_method(int client_socket, HttpRequest *client_request){
-	printf("Handling the method....\n");
+	printf("Handling the request....\n");
 
 	if (strcmp(client_request->method, "GET") == 0)
 	{
@@ -259,15 +260,24 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		}
 
 		//2. Dynamically allocate memory for full path
-		size_t full_path_len = strlen(directory_name) + strlen(final_request_path) + 1;
-		char *full_path = malloc(full_path_len);
-		if (full_path == NULL){
+		size_t uncanonical_full_path_len = strlen(directory_name) + strlen(final_request_path) + 1;
+		char *uncanonical_full_path = malloc(uncanonical_full_path_len);
+		if (uncanonical_full_path == NULL){
 			perror("Memory allocation failed\n");
 			return 1;
 		}
 
-		//3. Construct full path
-		snprintf(full_path, full_path_len, "%s%s", directory_name, final_request_path);
+		//3. Construct full path and canonicalize it
+		snprintf(uncanonical_full_path, uncanonical_full_path_len, "%s%s", directory_name, final_request_path);
+
+		char *full_path = malloc(PATH_MAX);
+		realpath(uncanonical_full_path, full_path);
+		if (full_path == NULL){
+			perror("Path canonicalization failed\n");
+			exit(1);
+		}
+
+		printf("THE FULL PATH IS: %s\n", full_path);
 
 		//4. Open file. Use rb because not every file will be text.
 		FILE *fp = fopen(full_path, "rb");
@@ -362,7 +372,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			free(file_content);	
 			free(full_path);
 		}
-		printf("Method handled\n");
+		printf("Request handling done\n");
 		return 0;
 	}
 
