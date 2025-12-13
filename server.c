@@ -266,7 +266,7 @@ void free_http_requests(HttpRequest *request){
 }
 
 //Function to handle the request method. Returns 0 for success, 1 for failure
-int handle_method(int client_socket, HttpRequest *client_request){
+int handle_method(int client_socket, HttpRequest *client_request, char *buffer, int bytes_read){
 	printf("Handling the request....\n");
 
 	if (strcmp(client_request->method, "GET") == 0)
@@ -436,6 +436,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			write(client_socket, no_content_length, strlen(no_content_length));
 			return 1;
 		}
+		printf("The content length is %lu\n", content_length);
 		
 		//3. Allocate memory for request body
 		char *request_body = malloc(content_length + 1);
@@ -445,29 +446,42 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			write(client_socket, server_error, strlen(server_error));
 			return 1;
 		}
+		printf("Allocated memory to request body\n");
 
-		//4. Read content_length bytes from network buffer to request_body
+		//4. Read content_length bytes from buffer to request_body
 		int total_bytes_read = 0;
-		while (total_bytes_read < content_length){
+		if (buffer != NULL && bytes_read > 0){
+			int bytes_to_copy = (bytes_read < content_length) ? bytes_read : content_length;
+			memcpy(request_body, buffer, bytes_to_copy);
+			total_bytes_read = bytes_to_copy;
+		}
+
+		while (total_bytes_read < content_length) {
 			int bytes_read = read(client_socket, request_body + total_bytes_read, content_length - total_bytes_read);
 			if (bytes_read <= 0){
-				perror("Failed to read all bytes of the request body\n");
 				free(request_body);
 				return 1;
 			}
 			total_bytes_read += bytes_read;
 		}
 		request_body[content_length] = '\0';
-		printf("The content length is %ld\n", content_length);
-		printf("The request body is %s\n", request_body);
+		printf("Content Length: %ld\n", content_length);
+		printf("Request Body: %s\n", request_body);
 
 		//5. Send success response
 		char *success_response = "HTTP/1.1 200 OK\r\n"
 			"Content-Type: text/plain\r\n"
-			"Content-Length: 26\r\n"
+			"Content-Length: 21\r\n"
 			"\r\n"
 			"POST request processed\r\n";
-		write(client_socket, success_response, strlen(success_response));
+
+		int bytes_written = write(client_socket, success_response, strlen(success_response));
+		printf("Bytes written: %d (expected %zu)\n", bytes_written, strlen(success_response));
+		if (bytes_written < 0) 
+		{
+			perror("Write failed"); 
+			return 1;
+		}
 		free(request_body);
 		return 0;
 	}
@@ -606,6 +620,19 @@ int main(int argc, char *argv[]){
 				buffer[valread] = '\0';
 				printf("Received from client: %s\n", buffer);
 
+				//Find request body before parsing
+				char *body_in_buffer = NULL;
+				int body_bytes_in_buffer = 0;
+
+				char *body_start = strstr(buffer, "\r\n\r\n");
+				if (body_start != NULL){
+					body_start += 4;
+					body_bytes_in_buffer = valread - (body_start - buffer);
+					if (body_bytes_in_buffer > 0){
+						body_in_buffer = body_start;
+					}
+				}
+
 				//6. Parse request header
 				HttpRequest client_request = {0};
 				char *request_line_end = strstr(buffer, "\r\n");
@@ -617,14 +644,23 @@ int main(int argc, char *argv[]){
 					exit(0);
 				}
 
+				char *conn_header = get_header_name(&client_request, "Connection");
+				printf("Connection header from client: %s\n", conn_header ? conn_header : "(none)");
+
 				//Handle the method
-				int method_status = handle_method(client_socket, &client_request);
+				int method_status = handle_method(client_socket, &client_request, body_in_buffer, body_bytes_in_buffer);
 				if (method_status != 0){
 					fprintf(stderr, "Request handling failed for client socket\n");
 				}
-
-				//Determine the connection
-				connection_status = handle_connection(&client_request);
+				if (strcmp(client_request.method, "POST") == 0){
+					printf("POST completed, closing connection\n");
+					connection_status = 0;
+				}
+				else{
+					//Determine the connection
+					connection_status = handle_connection(&client_request);
+					printf("handle_connection returned: %d\n", connection_status);
+				}
 
 				//Free the HttpRequest data
 				free_http_requests(&client_request);
