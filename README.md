@@ -383,10 +383,6 @@ if (strncmp(full_path, canonical_doc_root, strlen(canonical_doc_root)) != 0) {
 - POST accepts any content length
 - Can cause memory exhaustion
 
-🔴 **Memory Leaks**
-- HttpRequest struct fields never freed
-- Persistent connections leak memory on each request
-
 🔴 **No Authentication/Authorization**
 - Anyone can access any file in `files/`
 - No user validation
@@ -629,10 +625,8 @@ This is an educational project. Improvements welcome:
 ### Suggested Enhancements
 
 **High Priority:**
-1. Fix HTTP/1.1 connection handling default
-2. Implement proper path validation after canonicalization
-3. Add request/response timeouts
-4. Fix memory leaks (free HttpRequest fields)
+1. Implement proper path validation after canonicalization
+2. Add request/response timeouts
 
 **Medium Priority:**
 5. Dynamic buffer sizing for large requests
