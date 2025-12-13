@@ -219,16 +219,16 @@ int handle_connection(HttpRequest *client_request){
 	//Get the request's protocol. HTTP/1.0 deafult = close. HTTP/1.1 default = keep-alive.
 	char *protocol = client_request->protocol;
 	if (strcmp (protocol, "HTTP/1.0") == 0){
-		if (request_connection_status != NULL && strcasecmp(request_connection_status, "close") == 0) {
-			keep_alive = 0;
-		} else {
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "keep-alive") == 0) {
 			keep_alive = 1;
+		} else {
+			keep_alive = 0;
 		}
 	} else if(strcmp (protocol, "HTTP/1.1") == 0){
-		if (request_connection_status != NULL && strcasecmp(request_connection_status, "keep-alive") == 0){
-			keep_alive = 1;
-		} else {
+		if (request_connection_status != NULL && strcasecmp(request_connection_status, "close") == 0){
 			keep_alive = 0;
+		} else {
+			keep_alive = 1;
 		}
 
 	} else {
