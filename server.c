@@ -239,6 +239,32 @@ int handle_connection(HttpRequest *client_request){
 	return keep_alive;
 }
 
+//Function to free http requests
+void free_http_requests(HttpRequest *request){
+	if (request->path != NULL){
+		free(request->path);
+		request->path = NULL;
+	}
+	if (request->protocol != NULL){
+		free(request->protocol);
+		request->protocol = NULL;
+	}
+	if (request->query_string != NULL){
+		free(request->query_string);
+		request->query_string = NULL;
+	}
+	if (request->body != NULL){
+		free(request->body);
+		request->body = NULL;
+	}
+	for (int i = 0; i < request->header_count; i++){
+		if (request->headers[i] != NULL){
+			free(request->headers[i]);
+			request->headers[i] = NULL;
+		}
+	}
+}
+
 //Function to handle the request method. Returns 0 for success, 1 for failure
 int handle_method(int client_socket, HttpRequest *client_request){
 	printf("Handling the request....\n");
@@ -274,6 +300,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 		realpath(uncanonical_full_path, full_path);
 		if (full_path == NULL){
 			perror("Path canonicalization failed\n");
+			free(uncanonical_full_path);
 			exit(1);
 		}
 
@@ -290,6 +317,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 				"\r\n"
 				"404 Not Found\r\n";
 			write(client_socket, not_found, strlen(not_found));
+			free(uncanonical_full_path);
 			free(full_path);
 			return 1;
 		} else {
@@ -304,6 +332,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 			if (file_content == NULL){
 				perror("Memory allocation failed\n");
 				fclose(fp);
+				free(uncanonical_full_path);
 				free(full_path);
 				char *server_error = "HTTP/1.1 500 Internal Server Error\r\n"
 					"Content-Type: text/plain\r\n"
@@ -318,6 +347,7 @@ int handle_method(int client_socket, HttpRequest *client_request){
 				perror("File read incomplete");
 				free(file_content);
 				fclose(fp);
+				free(uncanonical_full_path);
 				free(full_path);
 				char *server_error = "HTTP/1.1 500 Internal Server Error\n"
 					"Content-Type: text/plain\r\n"
@@ -370,7 +400,11 @@ int handle_method(int client_socket, HttpRequest *client_request){
 
 			//11. Free the memory
 			free(file_content);	
+			free(uncanonical_full_path);
 			free(full_path);
+
+			//12. Close the file
+			fclose(fp);
 		}
 		printf("Request handling done\n");
 		return 0;
@@ -461,6 +495,7 @@ void signal_handler(int sig){
 		printf("Process %d has been terminated.\n", pid);
 	}
 }
+
 
 int main(int argc, char *argv[]){
 	// 1. Create a socket
@@ -590,6 +625,10 @@ int main(int argc, char *argv[]){
 
 				//Determine the connection
 				connection_status = handle_connection(&client_request);
+
+				//Free the HttpRequest data
+				free_http_requests(&client_request);
+
 			}while(connection_status == 1);
 
 			//Release the slot
@@ -600,6 +639,8 @@ int main(int argc, char *argv[]){
 			exit(0);
 		}
 		
+
+
 		//Close client socket for parent process
 		close(client_socket);
 	}
