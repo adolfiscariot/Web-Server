@@ -194,13 +194,10 @@ curl http://localhost:4040/
 # GET request for specific file
 curl http://localhost:4040/index.html
 
-# GET with query parameters
-curl http://localhost:4040/search?q=test
-
 # POST request with data
-curl -X POST http://localhost:4040/submit \
+curl -X POST http://localhost:4040/form.html \
   -H "Content-Type: application/json" \
-  -d '{"name":"John","age":30}'
+  -d '{"user_name":"Andre","user_age":3000}'
 
 # Test keep-alive
 curl -v --keepalive-time 5 http://localhost:4040/
@@ -248,6 +245,7 @@ http-server/
 ├── client.c                 # Test client
 ├── files/                   # Document root (static files)
 │   ├── index.html           # Default homepage
+│   ├── favicon.ico          # Website icon
 │   ├── styles.css           # CSS files
 │   ├── form.html            # Simple name and age form to handle POST requests
 └── README.md               # This file
