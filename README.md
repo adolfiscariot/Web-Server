@@ -221,8 +221,11 @@ print(response.text)
 
 # POST request
 response = requests.post(
-    'http://localhost:4040/api',
-    json={'key': 'value'}
+    'http://localhost:4040/form.html',
+    json={
+	    'user_name': 'Sosa', 
+	    'user_age': 300
+    }
 )
 print(response.status_code)
 ```
@@ -242,15 +245,11 @@ print(response.status_code)
 ```
 http-server/
 ├── server.c                 # Main server implementation
+├── client.c                 # Test client
 ├── files/                   # Document root (static files)
-│   ├── index.html          # Default homepage
-│   ├── styles.css          # CSS files
-│   ├── script.js           # JavaScript files
-│   ├── images/             # Image directory
-│   │   ├── logo.png
-│   │   └── banner.jpg
-│   └── documents/          # Other file types
-│       └── manual.pdf
+│   ├── index.html           # Default homepage
+│   ├── styles.css           # CSS files
+│   ├── form.html            # Simple name and age form to handle POST requests
 └── README.md               # This file
 ```
 
@@ -437,7 +436,7 @@ if (strncmp(full_path, canonical_doc_root, strlen(canonical_doc_root)) != 0) {
 ### Basic Functionality Test
 ```bash
 #!/bin/bash
-# test_server.sh
+# tests.sh
 
 echo "Starting server tests..."
 
@@ -455,7 +454,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:4040/nonexistent.html | 
 
 # Test 4: POST request
 echo "Test 4: POST with body"
-curl -s -X POST -d "test=data" http://localhost:4040/api | grep -q "processed" && echo "✓ PASS" || echo "✗ FAIL"
+curl -s -X POST -d "user_name=sosa&user_age=300" http://localhost:4040/form.html | grep -q "processed" && echo "✓ PASS" || echo "✗ FAIL"
 
 # Test 5: Keep-alive
 echo "Test 5: Keep-alive connection"
@@ -674,6 +673,6 @@ This project demonstrates:
 
 **Project Status:** Educational Implementation  
 **Last Updated:** December 2025  
-**Maintainer:** This Is My Name
+**Maintainer:** Champ Like Bailey
 
 For questions, issues, or suggestions, please open an issue on the project repository.

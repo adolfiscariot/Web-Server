@@ -44,11 +44,21 @@ echo ""
 
 # POST Request
 echo "POST with body"
-RESULT=$(curl -s -X POST -d "test=data" http://localhost:4040/api)
-if echo "$RESULT" | grep -q "processed"; then
+RESULT=$(curl -s -X POST -d "user_name=sosa&user_age=300" http://localhost:4040/form.html)
+if echo "$RESULT" | grep -q "processe"; then
 	echo "✓ SUCCESS: POST request processed"
 else
 	echo "✗ ERROR: POST request failed"
+fi
+echo ""
+
+# Keep alive header
+echo "Keep alive connection header"
+RESULT=$(curl -s -v http://localhost:4040/ 2>&1 | grep -i "Connection: keep-alive")
+if [ ! -z "$RESULT" ]; then
+	echo "✓ SUCCESS: Keep alive header present"
+else
+	echo "✗ ERROR: Keep alive header missing"
 fi
 echo ""
 
