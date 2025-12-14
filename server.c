@@ -271,8 +271,13 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 
 	if (strcmp(client_request->method, "GET") == 0)
 	{
-		//path for where files are
+		//Canonical path for where files are
 		const char *directory_name = "files";
+		char canonical_directory_path[PATH_MAX];
+		if (realpath(directory_name, canonical_directory_path) == NULL){
+			fprintf(stderr, "Failed to canonicalize directory path\n");
+			return 1;
+		}
 		char *request_path = client_request->path;
 		
 		//Actual file path on disk
@@ -297,20 +302,36 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		snprintf(uncanonical_full_path, uncanonical_full_path_len, "%s%s", directory_name, final_request_path);
 
 		char *full_path = malloc(PATH_MAX);
-		realpath(uncanonical_full_path, full_path);
-		if (full_path == NULL){
-			perror("Path canonicalization failed\n");
+		if (realpath(uncanonical_full_path, full_path) == NULL){
+			fprintf(stderr, "Path canonicalization failed: %s\n", full_path);
 			free(uncanonical_full_path);
-			exit(1);
+			free(full_path);
+			char *not_found = "HTTP/1.1 404 Not Found\r\n"
+				"Content-Type: text/plain\r\n"
+				"Content-Length: 13\r\n"
+				"\r\n"
+				"404 Not Found\r\n";
+			write(client_socket, not_found, strlen(not_found));
+			return 1;
 		}
 
 		printf("THE FULL PATH IS: %s\n", full_path);
+
+		//Validate the path
+		if (strncmp(canonical_directory_path, full_path, strlen(canonical_directory_path)) != 0){
+			fprintf(stderr, "Security: Malicious path attack attempted: %s\n", full_path);
+			char *forbidden = "HTTP/1.1 403 Forbidden\r\n"
+				"Content-Type: text/plain\r\n"
+				"Content-Length: 9\r\n"
+				"\r\n"
+				"Forbidden";
+			write(client_socket, forbidden, strlen(forbidden));
+		}
 
 		//4. Open file. Use rb because not every file will be text.
 		FILE *fp = fopen(full_path, "rb");
 		if (fp == NULL){
 			perror("Failed to open file\n");
-			printf("Full path is %s\n", full_path);
 			char *not_found = "HTTP/1.1 404 Not Found\r\n"
 				"Content-Type: text/plain\r\n"
 				"Content-Length: 13\r\n"
@@ -448,7 +469,7 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		}
 		printf("Allocated memory to request body\n");
 
-		//4. Read content_length bytes from buffer to request_body
+		//4. Read bytes from buffer to request_body
 		int total_bytes_read = 0;
 		if (buffer != NULL && bytes_read > 0){
 			int bytes_to_copy = (bytes_read < content_length) ? bytes_read : content_length;
@@ -456,6 +477,8 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 			total_bytes_read = bytes_to_copy;
 		}
 
+		//If not all bytes have been read from the buffer then check for the remaining ones 
+		//in the client socket
 		while (total_bytes_read < content_length) {
 			int bytes_read = read(client_socket, request_body + total_bytes_read, content_length - total_bytes_read);
 			if (bytes_read <= 0){
@@ -485,7 +508,6 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		free(request_body);
 		return 0;
 	}
-
 
 	else {
 		fprintf(stderr, "Method Not Allowed\n");
@@ -645,7 +667,6 @@ int main(int argc, char *argv[]){
 				}
 
 				char *conn_header = get_header_name(&client_request, "Connection");
-				printf("Connection header from client: %s\n", conn_header ? conn_header : "(none)");
 
 				//Handle the method
 				int method_status = handle_method(client_socket, &client_request, body_in_buffer, body_bytes_in_buffer);
@@ -659,7 +680,6 @@ int main(int argc, char *argv[]){
 				else{
 					//Determine the connection
 					connection_status = handle_connection(&client_request);
-					printf("handle_connection returned: %d\n", connection_status);
 				}
 
 				//Free the HttpRequest data

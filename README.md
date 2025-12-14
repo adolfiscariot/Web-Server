@@ -358,15 +358,6 @@ Prevents directory traversal attacks like `GET /../../../etc/passwd`
 
 This server is **NOT production-ready**. Known issues:
 
-🔴 **No Path Validation After Canonicalization**
-- `realpath()` is called but result isn't validated
-- Canonicalized path should be checked against document root:
-```c
-if (strncmp(full_path, canonical_doc_root, strlen(canonical_doc_root)) != 0) {
-    // Reject - path escapes document root
-}
-```
-
 🔴 **Buffer Overflow Risks**
 - Fixed 1024-byte buffer for requests
 - Large headers/requests will be truncated
