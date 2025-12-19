@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <netdb.h>
+#include <time.h>
 
 #define OPEN_MAX 10 //Max number of forks
 
@@ -602,9 +603,12 @@ int main(int argc, char *argv[]){
 		}
 
 		//Print client's IP Address, port number and time of request
+		time_t current_time = time(&current_time);
+		struct tm *time_info = time_info = localtime(&current_time);
+
 		char client_ip[INET_ADDRSTRLEN];
 		inet_ntop(AF_INET, &(client_addy.sin_addr), client_ip, INET_ADDRSTRLEN);
-		printf("Client's IP Address: %s\n", client_ip);
+		printf("Client's IP Address: %s. Time: %s\n", client_ip, asctime(time_info));
 
 		//Check if there's an available slot before creating a new child
 		if (sem_wait(semaphore) != 0){
