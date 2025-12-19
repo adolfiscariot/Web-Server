@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <netdb.h>
 
 #define OPEN_MAX 10 //Max number of forks
 
@@ -453,7 +454,7 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		long content_length = atoi(content_length_str);
 		if (content_length <= 0){
 			perror("Invalid content length\n");
-			char *nhttps://timdettmers.com/2025/12/10/why-agi-will-not-happen/o_content_length = "HTTP/1.1 400 Bad Request\r\n\r\n";
+			char *no_content_length = "HTTP/1.1 400 Bad Request\r\n\r\n";
 			write(client_socket, no_content_length, strlen(no_content_length));
 			return 1;
 		}
@@ -534,21 +535,27 @@ void signal_handler(int sig){
 
 
 int main(int argc, char *argv[]){
+	//0. Get address info
+	struct addrinfo hints, *results;
+
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+	
+	if(getaddrinfo(NULL, "4040", &hints, &results) != 0){
+		perror("Failed to find address\n");
+		return 1;
+	}
+
 	// 1. Create a socket
-	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	int server_fd = socket(results->ai_family, results->ai_socktype, results->ai_protocol);
 	if (server_fd < 0){
 		perror("Cannot create socket\n");
 		return 0;
 		}
 	
 	// 2. Bind socket to address
-	struct sockaddr_in addy;
-	memset((char *) &addy, 0, sizeof(addy));
-	addy.sin_family = AF_INET;
-	addy.sin_port = htons(4040);
-	addy.sin_addr.s_addr = htonl(INADDR_ANY);
-
-	if (bind(server_fd, (struct sockaddr *) &addy, sizeof(addy)) < 0){
+	if (bind(server_fd, results->ai_addr, results->ai_addrlen) < 0){
 		perror("Binding failed\n");
 		return 0;
 	}
