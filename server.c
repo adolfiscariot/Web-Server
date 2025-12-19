@@ -307,8 +307,8 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 			free(uncanonical_full_path);
 			free(full_path);
 			char *not_found = "HTTP/1.1 404 Not Found\r\n"
-				"Content-Type: text/plain\r\n"
-				"Content-Length: 13\r\n"
+				"Content-Type: text/plain; charset=utf-8\r\n"
+				"Content-Length: 15\r\n"
 				"\r\n"
 				"404 Not Found\r\n";
 			write(client_socket, not_found, strlen(not_found));
@@ -321,10 +321,10 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		if (strncmp(canonical_directory_path, full_path, strlen(canonical_directory_path)) != 0){
 			fprintf(stderr, "Security: Malicious path attack attempted: %s\n", full_path);
 			char *forbidden = "HTTP/1.1 403 Forbidden\r\n"
-				"Content-Type: text/plain\r\n"
-				"Content-Length: 9\r\n"
+				"Content-Type: text/plain; charset=utf-8\r\n"
+				"Content-Length: 11\r\n"
 				"\r\n"
-				"Forbidden";
+				"Forbidden\r\n";
 			write(client_socket, forbidden, strlen(forbidden));
 		}
 
@@ -333,8 +333,8 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		if (fp == NULL){
 			perror("Failed to open file\n");
 			char *not_found = "HTTP/1.1 404 Not Found\r\n"
-				"Content-Type: text/plain\r\n"
-				"Content-Length: 13\r\n"
+				"Content-Type: text/plain; charset=utf-8\r\n"
+				"Content-Length: 15\r\n"
 				"\r\n"
 				"404 Not Found\r\n";
 			write(client_socket, not_found, strlen(not_found));
@@ -356,10 +356,10 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 				free(uncanonical_full_path);
 				free(full_path);
 				char *server_error = "HTTP/1.1 500 Internal Server Error\r\n"
-					"Content-Type: text/plain\r\n"
-					"Content-Length: 22\r\n"
+					"Content-Type: text/plain; charset=utf-8\r\n"
+					"Content-Length: 23\r\n"
 					"\r\n"
-					"Internal Server Error";
+					"Internal Server Error\r\n";
 				write(client_socket, server_error, strlen(server_error));
 				return 1;
 			}
@@ -371,8 +371,8 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 				free(uncanonical_full_path);
 				free(full_path);
 				char *server_error = "HTTP/1.1 500 Internal Server Error\n"
-					"Content-Type: text/plain\r\n"
-					"Content-Length: 22\r\n"
+					"Content-Type: text/plain; charset=utf-8\r\n"
+					"Content-Length: 23\r\n"
 					"\r\n"
 					"Internal Server Error\r\n";
 				write(client_socket, server_error, strlen(server_error));
@@ -453,7 +453,7 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		long content_length = atoi(content_length_str);
 		if (content_length <= 0){
 			perror("Invalid content length\n");
-			char *no_content_length = "HTTP/1.1 400 Bad Request\r\n\r\n";
+			char *nhttps://timdettmers.com/2025/12/10/why-agi-will-not-happen/o_content_length = "HTTP/1.1 400 Bad Request\r\n\r\n";
 			write(client_socket, no_content_length, strlen(no_content_length));
 			return 1;
 		}
@@ -493,8 +493,8 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 
 		//5. Send success response
 		char *success_response = "HTTP/1.1 200 OK\r\n"
-			"Content-Type: text/plain\r\n"
-			"Content-Length: 21\r\n"
+			"Content-Type: text/plain; charset=utf-8\r\n"
+			"Content-Length: 24\r\n"
 			"\r\n"
 			"POST request processed\r\n";
 
@@ -512,8 +512,8 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 	else {
 		fprintf(stderr, "Method Not Allowed\n");
 		char *method_not_allowed = "HTTP/1.1 405 Method Not Allowed\r\n"
-			"Content-Type: text/html\r\n"
-			"Content-Length: 18\r\n"
+			"Content-Type: text/html; charset=utf-8\r\n"
+			"Content-Length: 20\r\n"
 			"\r\n"
 			"Method Not Allowed\r\n";
 		write(client_socket, method_not_allowed, strlen(method_not_allowed));
