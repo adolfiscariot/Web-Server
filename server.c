@@ -36,16 +36,8 @@ sem_t *semaphore;
 int parse_client_request(const char *raw_request_buffer, HttpRequest *client_request, char *request_line_end){
 	HttpRequest request = {0}; //initialize all struct values to NULL;
 
-	//1. Duplicate request to avoid modifying the original
-	char *duplicate_request_buffer = strdup(raw_request_buffer);
-	if(duplicate_request_buffer == NULL)
-	{
-		fprintf(stderr, "Memory allocation failed\n");
-		return 1;
-	}
-
 	//2. Fetch the HTTP Method
-	char *request_method_token = strtok(duplicate_request_buffer, " \r\n");
+	char *request_method_token = strtok((char *)raw_request_buffer, " \r\n");
 	if(request_method_token != NULL)
 	{
 		/*
@@ -59,7 +51,6 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 	else 
 	{
 		fprintf(stderr, "Request line not found\n");
-		free(duplicate_request_buffer); //strdup uses malloc so freeing this is a must.
 		return 1;
 	}
 
@@ -77,19 +68,18 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 			//replace question mark with null terminator
 			*question_mark = '\0';
 			//set path and query
-			client_request->path = strdup(path_token);
-			client_request->query_string = strdup(question_mark + 1);
+			client_request->path = path_token;
+			client_request->query_string = question_mark + 1;
 		}
 		else
 		{
-			client_request->path = strdup(path_token);
+			client_request->path = path_token;
 			client_request->query_string = NULL;	
 		}
 	}
 	else
 	{
 		fprintf(stderr, "Path not found\n");
-		free(duplicate_request_buffer);
 		return 1;
 	}
 
@@ -97,18 +87,16 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 	char *protocol_token = strtok(NULL, " \r\n");
 	if (protocol_token != NULL)
 	{
-		client_request->protocol = strdup(protocol_token);
+		client_request->protocol = protocol_token;
 		if (client_request->protocol == NULL)
 		{
 			fprintf(stderr, "Memory allocation failed\n");
-			free(duplicate_request_buffer);
 			return 1;
 		}
 	}
 	else
 	{
 		fprintf(stderr, "Protocol Not Found\n");
-		free(duplicate_request_buffer);
 		return 1;
 	}
 
@@ -126,7 +114,6 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 	if (request_line_end == NULL)
 	{
 		fprintf(stderr, "Malformed request line\n");
-		free(duplicate_request_buffer);
 		return 1;
 	}
 
@@ -134,7 +121,6 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 	if (headers_end == NULL)
 	{
 		fprintf(stderr, "Malformed headers - missing \\r\\n\\r\\n terminators.\n");
-		free(duplicate_request_buffer);
 		return 1;
 	}
 
@@ -153,12 +139,11 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 		}
 		if(strlen(header_token) > 0)
 		{
-			client_request->headers[client_request->header_count] = strdup(header_token);
+			client_request->headers[client_request->header_count] = header_token;
 			if(
 			client_request->headers[client_request->header_count] == NULL)
 			{
 				perror("Memory allocation failed\n");
-				free(duplicate_request_buffer);
 				return 1;
 			}
 			client_request->header_count++;
@@ -171,7 +156,6 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 		header_token = strtok_r(NULL, "\r\n", &save_ptr);
 	}
 	printf("Header parsing done. %d headers found\n", client_request->header_count);
-	free (duplicate_request_buffer);
 	return 0;
 }
 
@@ -212,7 +196,7 @@ char *get_header_name(HttpRequest *request, char *name)
 }
 
 //Function to handle connection status. Returns 0 (close) or 1 (keep alive)
-int handle_connection(HttpRequest *client_request){
+int connection_close_or_keep_alive(HttpRequest *client_request){
 	int keep_alive = 0; /* Initialize keep alive to be 0 */
 	
 	//Get the request's connection status
@@ -396,7 +380,7 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 			}
 
 			//9. Check the connection 
-			int conn_status = handle_connection(client_request);
+			int conn_status = connection_close_or_keep_alive(client_request);
 			char *conn;
 			if (conn_status == 0){
 				conn = "close";
@@ -690,11 +674,8 @@ int main(int argc, char *argv[]){
 				}
 				else{
 					//Determine the connection
-					connection_status = handle_connection(&client_request);
+					connection_status = connection_close_or_keep_alive(&client_request);
 				}
-
-				//Free the HttpRequest data
-				free_http_requests(&client_request);
 
 			}while(connection_status == 1);
 
