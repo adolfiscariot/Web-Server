@@ -19,8 +19,14 @@
 
 #define OPEN_MAX 10 //Max number of forks
 
+//Header struct 
+typedef struct{
+	char *key;
+	char *value;
+}Header;
+
 typedef struct{ //Ordered from largest to smallest for better cache alignment
-	char *headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
+	Header headers[20]; // Host: localhost:4040, Keep-alive: yes, Content-type: application/json etc
 	char *path; // /info.html
 	char *query_string; // ?pageNo=5
 	char *protocol; // HTTP/1.1
@@ -104,11 +110,10 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 	/*
 	 * First we find the end of the request line then
 	 * we use that to find the beginning of the headers. We then
-	 * find the end of the headers and replace
-	 * the delimiters with a null terminating character. Afterwards
-	 * we tokenize the headers adding a pointer to 
-	 * each header e.g "User Agent" to the headers field. Finally we
-	 * increament header_count by 1.
+	 * find the end of the headers and replace the delimiters with 
+	 * a null terminating character. Afterwards we eliminate any 
+	 * invalid headers then parse through the headers storing them
+	 * to the headers field. Finally we increament header_count by 1.
 	 */
 
 	if (request_line_end == NULL)
@@ -139,6 +144,14 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 		}
 		if(strlen(header_token) > 0)
 		{
+			//A header must have a colon & if not, skip it
+			char *colon = strchr(request->headers[i], ':');
+			if (colon == NULL)
+			{
+				fprintf(stderr, "Colon not found in header\n");
+				continue;
+			}
+
 			client_request->headers[client_request->header_count] = header_token;
 			if(
 			client_request->headers[client_request->header_count] == NULL)
@@ -168,14 +181,6 @@ char *get_header_name(HttpRequest *request, char *name)
 		if (request->headers[i] == NULL)
 		{
 			printf("Header not found. Skipping.\n");
-			continue;
-		}
-
-		//A header must have a colon & if not, skip it
-		char *colon = strchr(request->headers[i], ':');
-		if (colon == NULL)
-		{
-			fprintf(stderr, "Colon not found in header\n");
 			continue;
 		}
 
@@ -223,32 +228,6 @@ int connection_close_or_keep_alive(HttpRequest *client_request){
 	}
 
 	return keep_alive;
-}
-
-//Function to free http requests
-void free_http_requests(HttpRequest *request){
-	if (request->path != NULL){
-		free(request->path);
-		request->path = NULL;
-	}
-	if (request->protocol != NULL){
-		free(request->protocol);
-		request->protocol = NULL;
-	}
-	if (request->query_string != NULL){
-		free(request->query_string);
-		request->query_string = NULL;
-	}
-	if (request->body != NULL){
-		free(request->body);
-		request->body = NULL;
-	}
-	for (int i = 0; i < request->header_count; i++){
-		if (request->headers[i] != NULL){
-			free(request->headers[i]);
-			request->headers[i] = NULL;
-		}
-	}
 }
 
 //Function to handle the request method. Returns 0 for success, 1 for failure
