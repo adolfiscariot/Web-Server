@@ -131,6 +131,7 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 
 	*headers_end = '\0';
 	char *raw_headers_block = request_line_end + 2;
+
 	char *header_token;
 	char *save_ptr;
 
@@ -145,18 +146,36 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 		if(strlen(header_token) > 0)
 		{
 			//A header must have a colon & if not, skip it
-			char *colon = strchr(request->headers[i], ':');
+			char *colon = strchr(header_token, ':');
 			if (colon == NULL)
 			{
 				fprintf(stderr, "Colon not found in header\n");
+				header_token = strtok_r(NULL, "\r\n", &save_ptr);
 				continue;
 			}
 
-			client_request->headers[client_request->header_count] = header_token;
-			if(
-			client_request->headers[client_request->header_count] == NULL)
+			//Separate header key and value based on the colon 
+			*colon = '\0';
+			char *key = header_token;
+			char *value = colon + 1;
+
+			//Ensure whitespaces e.g. "Host: localhost" are eliminated
+			while(*value == ' ' || *value == '\t')
 			{
-				perror("Memory allocation failed\n");
+				value++;
+			}
+			 
+			//Store key and value
+			client_request->headers[client_request->header_count].key = strdup(key);
+			client_request->headers[client_request->header_count].value = strdup(value);
+
+			if
+			(
+				client_request->headers[client_request->header_count].key == NULL ||
+				client_request->headers[client_request->header_count].value == NULL 
+			)
+			{
+				perror("Memory allocation failed for header\n");
 				return 1;
 			}
 			client_request->header_count++;
@@ -172,31 +191,24 @@ int parse_client_request(const char *raw_request_buffer, HttpRequest *client_req
 	return 0;
 }
 
-//Function to get header fields
-char *get_header_name(HttpRequest *request, char *name)
-{
-	//loop through headers:
-	for (int i = 0; i < request->header_count; i++)
-	{
-		if (request->headers[i] == NULL)
-		{
-			printf("Header not found. Skipping.\n");
-			continue;
+void free_http_request(HttpRequest *request){
+	for (int i = 0; i < request->header_count; i++){
+		if (request->headers[i].key){
+			free(request->headers[i].key);
 		}
-
-		//The name length is from the beginning to the colon
-		size_t name_length = colon - request->headers[i];
-
-		//Return value if header in HttpRequest struct matches inputed header
-		if (strncasecmp(request->headers[i], name, name_length) == 0 && name_length == strlen(name))
-		{
-			char *whitespaces = colon + 1;
-			while(*whitespaces == ' ' || *whitespaces == '\t')
-				whitespaces++;
-			return whitespaces;
+		if (request->headers[i].value){
+			free(request->headers[i].value);
 		}
 	}
-	printf("There are no more headers to loop through\n");
+}
+
+//Function to get header fields
+char *get_header_value(HttpRequest *request, char *name){
+	for (int i = 0; i < request->header_count; i++){
+		if (strncasecmp(request->headers[i].key, name, strlen(name)) == 0){
+			return request->headers[i].value;
+		}
+	}
 	return NULL;
 }
 
@@ -205,7 +217,7 @@ int connection_close_or_keep_alive(HttpRequest *client_request){
 	int keep_alive = 0; /* Initialize keep alive to be 0 */
 	
 	//Get the request's connection status
-	char *request_connection_status = get_header_name(client_request, "Connection");	
+	char *request_connection_status = get_header_value(client_request, "Connection");	
 
 	//Get the request's protocol. HTTP/1.0 deafult = close. HTTP/1.1 default = keep-alive.
 	char *protocol = client_request->protocol;
@@ -406,7 +418,7 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 		printf("Handling POST method...\n");
 
 		//1. Get Content-Length header
-		char *content_length_str = get_header_name(client_request, "Content-Length");
+		char *content_length_str = get_header_value(client_request, "Content-Length");
 		if (content_length_str == NULL){
 			perror("Content length not found in reqest header\n");
 			char *no_content_length = "HTTP/1.1 400 Bad Request\r\n\r\n";
@@ -640,7 +652,7 @@ int main(int argc, char *argv[]){
 					exit(0);
 				}
 
-				char *conn_header = get_header_name(&client_request, "Connection");
+				char *conn_header = get_header_value(&client_request, "Connection");
 
 				//Handle the method
 				int method_status = handle_method(client_socket, &client_request, body_in_buffer, body_bytes_in_buffer);
@@ -655,6 +667,9 @@ int main(int argc, char *argv[]){
 					//Determine the connection
 					connection_status = connection_close_or_keep_alive(&client_request);
 				}
+
+				//Free HttpRequest data
+				free_http_request(&client_request);
 
 			}while(connection_status == 1);
 
