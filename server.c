@@ -244,10 +244,10 @@ int connection_close_or_keep_alive(HttpRequest *client_request){
 
 //Function to handle the request method. Returns 0 for success, 1 for failure
 int handle_method(int client_socket, HttpRequest *client_request, char *buffer, int bytes_read){
-	printf("Handling the request....\n");
-
 	if (strcmp(client_request->method, "GET") == 0)
 	{
+		printf("Handling GET request...\n");
+
 		//Canonical path for where files are
 		const char *directory_name = "files";
 		char canonical_directory_path[PATH_MAX];
@@ -415,7 +415,7 @@ int handle_method(int client_socket, HttpRequest *client_request, char *buffer, 
 	 *based on the content type. Send a response.
 	 */
 	if (strcmp(client_request->method, "POST") == 0){
-		printf("Handling POST method...\n");
+		printf("Handling POST request...\n");
 
 		//1. Get Content-Length header
 		char *content_length_str = get_header_value(client_request, "Content-Length");
@@ -613,10 +613,9 @@ int main(int argc, char *argv[]){
 				char buffer[1024] = {0};
 				int valread = read(client_socket, buffer, sizeof(buffer) - 1);
 				if (valread ==  0){
-					perror("End of file");
 					sem_post(semaphore);
 					close(client_socket);
-					exit(1);
+					exit(0);
 				}
 				else if (valread < 0){
 					perror("Read failed or empty request\n");
@@ -626,7 +625,7 @@ int main(int argc, char *argv[]){
 				}
 
 				buffer[valread] = '\0';
-				printf("Received from client: %s\n", buffer);
+				//printf("Received from client: %s\n", buffer);
 
 				//Find request body before parsing
 				char *body_in_buffer = NULL;
